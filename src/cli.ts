@@ -9,7 +9,9 @@ const main = defineCommand({
   },
   subCommands: {
     add: () => import("./commands/add.js").then((m) => m.default),
+    adopt: () => import("./commands/adopt.js").then((m) => m.default),
     list: () => import("./commands/list.js").then((m) => m.default),
+    rm: () => import("./commands/rm.js").then((m) => m.default),
     update: () => import("./commands/update.js").then((m) => m.default),
   },
 });

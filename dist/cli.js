@@ -132,6 +132,11 @@ async function writeRegistry(registry) {
 function findEntry(registry, id) {
   return registry.repos.find((entry) => entry.id === id);
 }
+function findEntryByOwnerRepo(registry, owner, repo) {
+  return registry.repos.find(
+    (entry) => entry.owner === owner && entry.repo === repo
+  );
+}
 function addEntry(registry, entry) {
   if (findEntry(registry, entry.id)) {
     throw new Error(`Repository already exists in registry: ${entry.id}`);
@@ -151,6 +156,16 @@ function updateEntry(registry, id, updates) {
   return {
     ...registry,
     repos: updatedRepos
+  };
+}
+function removeEntry(registry, id) {
+  const filtered = registry.repos.filter((entry) => entry.id !== id);
+  if (filtered.length === registry.repos.length) {
+    throw new Error(`Repository not found in registry: ${id}`);
+  }
+  return {
+    ...registry,
+    repos: filtered
   };
 }
 function filterByTags(registry, tags) {
@@ -197,8 +212,8 @@ async function resetHard(localPath) {
   const afterHash = afterLog.latest?.hash;
   if (beforeHash && afterHash && beforeHash !== afterHash) {
     try {
-      const log4 = await git.log({ from: beforeHash, to: afterHash });
-      return log4.total;
+      const log6 = await git.log({ from: beforeHash, to: afterHash });
+      return log6.total;
     } catch {
       return -1;
     }
@@ -214,8 +229,8 @@ async function pullFastForward(localPath) {
   const afterHash = afterLog.latest?.hash;
   if (beforeHash && afterHash && beforeHash !== afterHash) {
     try {
-      const log4 = await git.log({ from: beforeHash, to: afterHash });
-      return log4.total;
+      const log6 = await git.log({ from: beforeHash, to: afterHash });
+      return log6.total;
     } catch {
       return -1;
     }
@@ -275,6 +290,16 @@ async function getRepoStatus(localPath) {
       behind: 0,
       isDirty: false
     };
+  }
+}
+async function getRemoteUrl(localPath, remoteName = "origin") {
+  const git = simpleGit(localPath);
+  try {
+    const remotes = await git.getRemotes(true);
+    const remote = remotes.find((r) => r.name === remoteName);
+    return remote?.refs?.fetch || null;
+  } catch {
+    return null;
   }
 }
 async function usesLfs(localPath) {
@@ -416,13 +441,301 @@ var init_add = __esm({
   }
 });
 
+// src/lib/scan.ts
+import { readdir, stat, lstat } from "fs/promises";
+import { join as join4 } from "path";
+import { existsSync as existsSync3 } from "fs";
+async function isSymlink(path2) {
+  try {
+    const stats = await lstat(path2);
+    return stats.isSymbolicLink();
+  } catch {
+    return false;
+  }
+}
+async function isDirectory(path2) {
+  try {
+    const stats = await stat(path2);
+    return stats.isDirectory();
+  } catch {
+    return false;
+  }
+}
+async function scanClonesDir() {
+  const clonesDir = getClonesDir();
+  const discovered = [];
+  const skipped = [];
+  if (!existsSync3(clonesDir)) {
+    return { discovered, skipped };
+  }
+  let ownerDirs;
+  try {
+    ownerDirs = await readdir(clonesDir);
+  } catch (error) {
+    skipped.push({
+      path: clonesDir,
+      reason: `Cannot read directory: ${error instanceof Error ? error.message : String(error)}`
+    });
+    return { discovered, skipped };
+  }
+  for (const owner of ownerDirs) {
+    if (owner.startsWith(".") || owner === "registry.json") {
+      continue;
+    }
+    const ownerPath = join4(clonesDir, owner);
+    if (await isSymlink(ownerPath)) {
+      skipped.push({ path: ownerPath, reason: "Symlink (skipped)" });
+      continue;
+    }
+    if (!await isDirectory(ownerPath)) {
+      continue;
+    }
+    let repoDirs;
+    try {
+      repoDirs = await readdir(ownerPath);
+    } catch (error) {
+      skipped.push({
+        path: ownerPath,
+        reason: `Cannot read directory: ${error instanceof Error ? error.message : String(error)}`
+      });
+      continue;
+    }
+    for (const repo of repoDirs) {
+      if (repo.startsWith(".")) {
+        continue;
+      }
+      const repoPath = join4(ownerPath, repo);
+      if (await isSymlink(repoPath)) {
+        skipped.push({ path: repoPath, reason: "Symlink (skipped)" });
+        continue;
+      }
+      if (!await isDirectory(repoPath)) {
+        continue;
+      }
+      const gitPath = join4(repoPath, ".git");
+      const hasGit = existsSync3(gitPath);
+      if (!hasGit) {
+        skipped.push({ path: repoPath, reason: "No .git directory" });
+        continue;
+      }
+      discovered.push({
+        owner,
+        repo,
+        localPath: repoPath,
+        hasGit: true
+      });
+    }
+  }
+  return { discovered, skipped };
+}
+async function isNestedRepo(localPath) {
+  const gitPath = join4(localPath, ".git");
+  try {
+    const stats = await lstat(gitPath);
+    if (stats.isFile()) {
+      return true;
+    }
+    const clonesDir = getClonesDir();
+    let current = localPath;
+    while (current !== clonesDir && current !== "/") {
+      const parent = join4(current, "..");
+      const parentGit = join4(parent, ".git");
+      if (existsSync3(parentGit) && parent !== clonesDir) {
+        return true;
+      }
+      current = parent;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+var init_scan = __esm({
+  "src/lib/scan.ts"() {
+    "use strict";
+    init_esm_shims();
+    init_config();
+  }
+});
+
+// src/commands/adopt.ts
+var adopt_exports = {};
+__export(adopt_exports, {
+  default: () => adopt_default
+});
+import { defineCommand as defineCommand2 } from "citty";
+import * as p2 from "@clack/prompts";
+var adopt_default;
+var init_adopt = __esm({
+  "src/commands/adopt.ts"() {
+    "use strict";
+    init_esm_shims();
+    init_scan();
+    init_git();
+    init_url_parser();
+    init_registry();
+    init_config();
+    adopt_default = defineCommand2({
+      meta: {
+        name: "adopt",
+        description: "Discover and adopt existing repositories in the clones directory"
+      },
+      args: {
+        scan: {
+          type: "boolean",
+          description: "Only scan and report, don't add to registry",
+          default: false
+        },
+        yes: {
+          type: "boolean",
+          alias: "y",
+          description: "Skip confirmation prompt",
+          default: false
+        }
+      },
+      async run({ args }) {
+        p2.intro("clones adopt");
+        const clonesDir = getClonesDir();
+        p2.log.info(`Scanning ${clonesDir}...`);
+        const s = p2.spinner();
+        s.start("Discovering repositories...");
+        const { discovered, skipped: scanSkipped } = await scanClonesDir();
+        s.stop(`Found ${discovered.length} potential repositories`);
+        if (discovered.length === 0) {
+          p2.log.warn("No repositories found in clones directory.");
+          p2.log.info(`Expected structure: ${clonesDir}/owner/repo/.git`);
+          p2.outro("Nothing to adopt");
+          return;
+        }
+        const registry = await readRegistry();
+        const toAdopt = [];
+        const alreadyKnown = [];
+        const skipped = [...scanSkipped];
+        for (const repo of discovered) {
+          const existingById = registry.repos.find(
+            (e) => e.owner === repo.owner && e.repo === repo.repo
+          );
+          if (existingById) {
+            alreadyKnown.push({ owner: repo.owner, repo: repo.repo });
+            continue;
+          }
+          if (await isNestedRepo(repo.localPath)) {
+            skipped.push({
+              path: repo.localPath,
+              reason: "Appears to be a submodule or worktree"
+            });
+            continue;
+          }
+          const remoteUrl = await getRemoteUrl(repo.localPath);
+          if (!remoteUrl) {
+            skipped.push({
+              path: repo.localPath,
+              reason: "No 'origin' remote configured"
+            });
+            continue;
+          }
+          try {
+            const parsed = parseGitUrl(remoteUrl);
+            toAdopt.push({
+              owner: repo.owner,
+              repo: repo.repo,
+              localPath: repo.localPath,
+              remoteUrl,
+              parsed
+            });
+          } catch (error) {
+            skipped.push({
+              path: repo.localPath,
+              reason: `Cannot parse remote URL: ${remoteUrl}`
+            });
+          }
+        }
+        p2.log.info(`
+\u{1F4CA} Scan Results:`);
+        p2.log.info(`   New repos to adopt: ${toAdopt.length}`);
+        p2.log.info(`   Already in registry: ${alreadyKnown.length}`);
+        p2.log.info(`   Skipped: ${skipped.length}`);
+        if (alreadyKnown.length > 0) {
+          p2.log.step(`
+\u2713 Already tracked:`);
+          for (const r of alreadyKnown) {
+            p2.log.message(`   ${r.owner}/${r.repo}`);
+          }
+        }
+        if (skipped.length > 0) {
+          p2.log.step(`
+\u26A0 Skipped:`);
+          for (const s2 of skipped) {
+            p2.log.message(`   ${s2.path}`);
+            p2.log.message(`   \u2514\u2500 ${s2.reason}`);
+          }
+        }
+        if (toAdopt.length === 0) {
+          p2.outro("Nothing new to adopt");
+          return;
+        }
+        p2.log.step(`
+\u{1F4E6} Repos to adopt:`);
+        for (const r of toAdopt) {
+          p2.log.message(`   ${r.owner}/${r.repo} (${r.parsed.host})`);
+        }
+        if (args.scan) {
+          p2.outro("Scan complete (--scan mode, no changes made)");
+          return;
+        }
+        if (!args.yes) {
+          const shouldContinue = await p2.confirm({
+            message: `Add ${toAdopt.length} repositories to registry?`
+          });
+          if (p2.isCancel(shouldContinue) || !shouldContinue) {
+            p2.outro("Cancelled");
+            return;
+          }
+        }
+        let updatedRegistry = registry;
+        let adoptedCount = 0;
+        for (const repo of toAdopt) {
+          const repoId = generateRepoId(repo.parsed);
+          if (findEntry(updatedRegistry, repoId)) {
+            p2.log.warn(`${repo.owner}/${repo.repo}: Already exists with ID ${repoId}, skipping`);
+            continue;
+          }
+          const entry = {
+            id: repoId,
+            host: repo.parsed.host,
+            owner: repo.parsed.owner,
+            repo: repo.parsed.repo,
+            cloneUrl: repo.parsed.cloneUrl,
+            defaultRemoteName: DEFAULTS.defaultRemoteName,
+            updateStrategy: DEFAULTS.updateStrategy,
+            submodules: DEFAULTS.submodules,
+            lfs: DEFAULTS.lfs,
+            addedAt: (/* @__PURE__ */ new Date()).toISOString(),
+            addedBy: "adopt",
+            managed: true
+          };
+          updatedRegistry = addEntry(updatedRegistry, entry);
+          adoptedCount++;
+          p2.log.success(`Added ${repo.owner}/${repo.repo}`);
+        }
+        if (adoptedCount > 0) {
+          await writeRegistry(updatedRegistry);
+          p2.log.success(`
+Registry updated with ${adoptedCount} new entries`);
+        }
+        p2.outro("Done!");
+      }
+    });
+  }
+});
+
 // src/commands/list.ts
 var list_exports = {};
 __export(list_exports, {
   default: () => list_default
 });
-import { defineCommand as defineCommand2 } from "citty";
-import * as p2 from "@clack/prompts";
+import { defineCommand as defineCommand3 } from "citty";
+import * as p3 from "@clack/prompts";
 function outputJson(items) {
   const output = {
     version: "1.0.0",
@@ -535,7 +848,7 @@ var init_list = __esm({
     init_registry();
     init_git();
     init_config();
-    list_default = defineCommand2({
+    list_default = defineCommand3({
       meta: {
         name: "list",
         description: "List all tracked repositories"
@@ -560,8 +873,8 @@ var init_list = __esm({
           if (args.json) {
             console.log(JSON.stringify({ version: "1.0.0", repos: [] }, null, 2));
           } else {
-            p2.log.info("No repositories in registry.");
-            p2.log.info("Use 'clones add <url>' to add a repository.");
+            p3.log.info("No repositories in registry.");
+            p3.log.info("Use 'clones add <url>' to add a repository.");
           }
           return;
         }
@@ -581,7 +894,7 @@ var init_list = __esm({
           if (args.json) {
             console.log(JSON.stringify({ version: "1.0.0", repos: [] }, null, 2));
           } else {
-            p2.log.info("No repositories match the filter.");
+            p3.log.info("No repositories match the filter.");
           }
           return;
         }
@@ -602,13 +915,122 @@ var init_list = __esm({
   }
 });
 
+// src/commands/rm.ts
+var rm_exports = {};
+__export(rm_exports, {
+  default: () => rm_default
+});
+import { defineCommand as defineCommand4 } from "citty";
+import * as p4 from "@clack/prompts";
+import { rm } from "fs/promises";
+import { existsSync as existsSync4 } from "fs";
+var rm_default;
+var init_rm = __esm({
+  "src/commands/rm.ts"() {
+    "use strict";
+    init_esm_shims();
+    init_registry();
+    init_config();
+    rm_default = defineCommand4({
+      meta: {
+        name: "rm",
+        description: "Remove a repository from the registry (and optionally from disk)"
+      },
+      args: {
+        repo: {
+          type: "positional",
+          description: "Repository identifier (owner/repo)",
+          required: true
+        },
+        "keep-disk": {
+          type: "boolean",
+          description: "Keep the local directory (only remove from registry)",
+          default: false
+        },
+        yes: {
+          type: "boolean",
+          alias: "y",
+          description: "Skip confirmation prompt",
+          default: false
+        }
+      },
+      async run({ args }) {
+        p4.intro("clones rm");
+        const parts = args.repo.split("/");
+        if (parts.length !== 2) {
+          p4.log.error(`Invalid format: ${args.repo}`);
+          p4.log.info("Expected format: owner/repo");
+          process.exit(1);
+        }
+        const [owner, repo] = parts;
+        const registry = await readRegistry();
+        const entry = findEntryByOwnerRepo(registry, owner, repo);
+        if (!entry) {
+          p4.log.error(`Repository not found in registry: ${owner}/${repo}`);
+          p4.log.info("Use 'clones list' to see all tracked repositories.");
+          process.exit(1);
+        }
+        const localPath = getRepoPath(owner, repo);
+        const diskExists = existsSync4(localPath);
+        p4.log.info(`Repository: ${owner}/${repo}`);
+        p4.log.info(`Registry ID: ${entry.id}`);
+        p4.log.info(`Local path: ${localPath}`);
+        p4.log.info(`On disk: ${diskExists ? "Yes" : "No (already deleted)"}`);
+        const willDeleteFromRegistry = true;
+        const willDeleteFromDisk = diskExists && !args["keep-disk"];
+        p4.log.step("\nActions to perform:");
+        p4.log.message(`   \u2713 Remove from registry`);
+        if (willDeleteFromDisk) {
+          p4.log.message(`   \u2713 Delete local directory`);
+        } else if (diskExists && args["keep-disk"]) {
+          p4.log.message(`   \u25CB Keep local directory (--keep-disk)`);
+        } else if (!diskExists) {
+          p4.log.message(`   \u25CB Local directory doesn't exist`);
+        }
+        if (!args.yes) {
+          const message = willDeleteFromDisk ? `Remove ${owner}/${repo} from registry AND delete from disk?` : `Remove ${owner}/${repo} from registry?`;
+          const shouldContinue = await p4.confirm({
+            message
+          });
+          if (p4.isCancel(shouldContinue) || !shouldContinue) {
+            p4.outro("Cancelled");
+            return;
+          }
+        }
+        if (willDeleteFromDisk) {
+          const s = p4.spinner();
+          s.start(`Deleting ${localPath}...`);
+          try {
+            await rm(localPath, { recursive: true, force: true });
+            s.stop(`Deleted ${localPath}`);
+          } catch (error) {
+            s.stop("Failed to delete directory");
+            p4.log.error(error instanceof Error ? error.message : String(error));
+            p4.log.info("Registry entry was NOT removed. Fix the issue and try again.");
+            process.exit(1);
+          }
+        }
+        try {
+          const updatedRegistry = removeEntry(registry, entry.id);
+          await writeRegistry(updatedRegistry);
+          p4.log.success(`Removed ${owner}/${repo} from registry`);
+        } catch (error) {
+          p4.log.error(error instanceof Error ? error.message : String(error));
+          process.exit(1);
+        }
+        p4.outro("Done!");
+      }
+    });
+  }
+});
+
 // src/commands/update.ts
 var update_exports = {};
 __export(update_exports, {
   default: () => update_default
 });
-import { defineCommand as defineCommand3 } from "citty";
-import * as p3 from "@clack/prompts";
+import { defineCommand as defineCommand5 } from "citty";
+import * as p5 from "@clack/prompts";
 async function updateRepo(entry, options) {
   const localPath = getRepoPath(entry.owner, entry.repo);
   const repoName = `${entry.owner}/${entry.repo}`;
@@ -616,67 +1038,67 @@ async function updateRepo(entry, options) {
   console.log(repoName);
   const status = await getRepoStatus(localPath);
   if (!status.exists) {
-    p3.log.error("  \u2717 SKIPPED (directory missing)");
+    p5.log.error("  \u2717 SKIPPED (directory missing)");
     return { status: "skipped", reason: "directory missing" };
   }
   if (!status.isGitRepo) {
-    p3.log.error("  \u2717 SKIPPED (not a git repo)");
+    p5.log.error("  \u2717 SKIPPED (not a git repo)");
     return { status: "skipped", reason: "not a git repo" };
   }
   if (status.isDetached) {
-    p3.log.error("  \u2717 SKIPPED (detached HEAD)");
+    p5.log.error("  \u2717 SKIPPED (detached HEAD)");
     return { status: "skipped", reason: "detached HEAD" };
   }
   if (!status.tracking) {
-    p3.log.error("  \u2717 SKIPPED (no upstream tracking)");
+    p5.log.error("  \u2717 SKIPPED (no upstream tracking)");
     return { status: "skipped", reason: "no upstream tracking" };
   }
   if (status.isDirty && !options.force) {
-    p3.log.error("  \u2717 SKIPPED (dirty working tree)");
-    p3.log.info("    Use --force to update anyway");
+    p5.log.error("  \u2717 SKIPPED (dirty working tree)");
+    p5.log.info("    Use --force to update anyway");
     return { status: "skipped", reason: "dirty working tree" };
   }
   if (options.dryRun) {
-    p3.log.info("  \u2713 Would fetch and reset");
+    p5.log.info("  \u2713 Would fetch and reset");
     return { status: "updated", commits: 0 };
   }
   try {
-    const s = p3.spinner();
+    const s = p5.spinner();
     s.start("  Fetching...");
     await fetchWithPrune(localPath, entry.defaultRemoteName);
     s.stop("  Fetched");
     let commits = 0;
     if (entry.updateStrategy === "hard-reset") {
       commits = await resetHard(localPath);
-      p3.log.success(
+      p5.log.success(
         `  \u2713 Reset to ${status.tracking}${commits > 0 ? ` (${commits} commits)` : ""}`
       );
     } else {
       commits = await pullFastForward(localPath);
-      p3.log.success(
+      p5.log.success(
         `  \u2713 Pulled (ff-only)${commits > 0 ? ` (${commits} commits)` : ""}`
       );
     }
     if (entry.submodules === "recursive") {
       try {
         await updateSubmodules(localPath);
-        p3.log.info("  \u2713 Submodules updated");
+        p5.log.info("  \u2713 Submodules updated");
       } catch (error) {
-        p3.log.warn("  \u26A0 Submodule update failed");
+        p5.log.warn("  \u26A0 Submodule update failed");
       }
     }
     if (entry.lfs === "always" || entry.lfs === "auto" && await usesLfs(localPath)) {
       try {
         await pullLfs(localPath, entry.defaultRemoteName);
-        p3.log.info("  \u2713 LFS pulled");
+        p5.log.info("  \u2713 LFS pulled");
       } catch (error) {
-        p3.log.warn("  \u26A0 LFS pull failed (is git-lfs installed?)");
+        p5.log.warn("  \u26A0 LFS pull failed (is git-lfs installed?)");
       }
     }
     return { status: "updated", commits };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    p3.log.error(`  \u2717 ERROR: ${message}`);
+    p5.log.error(`  \u2717 ERROR: ${message}`);
     return { status: "error", error: message };
   }
 }
@@ -697,7 +1119,7 @@ var init_update = __esm({
     init_registry();
     init_git();
     init_config();
-    update_default = defineCommand3({
+    update_default = defineCommand5({
       meta: {
         name: "update",
         description: "Sync all tracked repositories"
@@ -717,12 +1139,12 @@ var init_update = __esm({
         }
       },
       async run({ args }) {
-        p3.intro("clones update");
+        p5.intro("clones update");
         let registry = await readRegistry();
         if (registry.repos.length === 0) {
-          p3.log.info("No repositories in registry.");
-          p3.log.info("Use 'clones add <url>' to add a repository.");
-          p3.outro("Done!");
+          p5.log.info("No repositories in registry.");
+          p5.log.info("Use 'clones add <url>' to add a repository.");
+          p5.outro("Done!");
           return;
         }
         let repos = registry.repos.filter((r) => r.managed);
@@ -730,14 +1152,14 @@ var init_update = __esm({
           repos = filterByPattern({ ...registry, repos }, args.filter);
         }
         if (repos.length === 0) {
-          p3.log.info("No repositories match the filter.");
-          p3.outro("Done!");
+          p5.log.info("No repositories match the filter.");
+          p5.outro("Done!");
           return;
         }
         const dryRun = args["dry-run"] || false;
         const force = args.force || false;
         if (dryRun) {
-          p3.log.warn("Dry run mode - no changes will be made");
+          p5.log.warn("Dry run mode - no changes will be made");
         }
         const summaries = [];
         for (const entry of repos) {
@@ -754,7 +1176,7 @@ var init_update = __esm({
         }
         console.log();
         printSummary(summaries);
-        p3.outro("Done!");
+        p5.outro("Done!");
       }
     });
   }
@@ -762,8 +1184,8 @@ var init_update = __esm({
 
 // src/cli.ts
 init_esm_shims();
-import { defineCommand as defineCommand4, runMain } from "citty";
-var main = defineCommand4({
+import { defineCommand as defineCommand6, runMain } from "citty";
+var main = defineCommand6({
   meta: {
     name: "clones",
     version: "1.0.0",
@@ -771,7 +1193,9 @@ var main = defineCommand4({
   },
   subCommands: {
     add: () => Promise.resolve().then(() => (init_add(), add_exports)).then((m) => m.default),
+    adopt: () => Promise.resolve().then(() => (init_adopt(), adopt_exports)).then((m) => m.default),
     list: () => Promise.resolve().then(() => (init_list(), list_exports)).then((m) => m.default),
+    rm: () => Promise.resolve().then(() => (init_rm(), rm_exports)).then((m) => m.default),
     update: () => Promise.resolve().then(() => (init_update(), update_exports)).then((m) => m.default)
   }
 });
