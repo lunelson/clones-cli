@@ -32,8 +32,8 @@ interface UpdateSummary {
 
 export default defineCommand({
   meta: {
-    name: "update",
-    description: "Sync all tracked repositories (adopt, clone missing, fetch/reset)",
+    name: "sync",
+    description: "Synchronize registry and clones (adopt, clone missing, fetch/reset)",
   },
   args: {
     filter: {
@@ -50,7 +50,7 @@ export default defineCommand({
     },
   },
   async run({ args }) {
-    p.intro("clones update");
+    p.intro("clones sync");
 
     const dryRun = args["dry-run"] || false;
     const force = args.force || false;

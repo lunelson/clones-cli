@@ -212,8 +212,8 @@ async function resetHard(localPath) {
   const afterHash = afterLog.latest?.hash;
   if (beforeHash && afterHash && beforeHash !== afterHash) {
     try {
-      const log5 = await git.log({ from: beforeHash, to: afterHash });
-      return log5.total;
+      const log6 = await git.log({ from: beforeHash, to: afterHash });
+      return log6.total;
     } catch {
       return -1;
     }
@@ -229,8 +229,8 @@ async function pullFastForward(localPath) {
   const afterHash = afterLog.latest?.hash;
   if (beforeHash && afterHash && beforeHash !== afterHash) {
     try {
-      const log5 = await git.log({ from: beforeHash, to: afterHash });
-      return log5.total;
+      const log6 = await git.log({ from: beforeHash, to: afterHash });
+      return log6.total;
     } catch {
       return -1;
     }
@@ -853,10 +853,10 @@ var init_scan = __esm({
   }
 });
 
-// src/commands/update.ts
-var update_exports = {};
-__export(update_exports, {
-  default: () => update_default
+// src/commands/sync.ts
+var sync_exports = {};
+__export(sync_exports, {
+  default: () => sync_default
 });
 import { defineCommand as defineCommand4 } from "citty";
 import * as p4 from "@clack/prompts";
@@ -1025,9 +1025,9 @@ function printSummary(summaries, dryRun) {
     console.log(parts.join(", "));
   }
 }
-var update_default;
-var init_update = __esm({
-  "src/commands/update.ts"() {
+var sync_default;
+var init_sync = __esm({
+  "src/commands/sync.ts"() {
     "use strict";
     init_esm_shims();
     init_registry();
@@ -1035,10 +1035,10 @@ var init_update = __esm({
     init_config();
     init_scan();
     init_url_parser();
-    update_default = defineCommand4({
+    sync_default = defineCommand4({
       meta: {
-        name: "update",
-        description: "Sync all tracked repositories (adopt, clone missing, fetch/reset)"
+        name: "sync",
+        description: "Synchronize registry and clones (adopt, clone missing, fetch/reset)"
       },
       args: {
         filter: {
@@ -1055,7 +1055,7 @@ var init_update = __esm({
         }
       },
       async run({ args }) {
-        p4.intro("clones update");
+        p4.intro("clones sync");
         const dryRun = args["dry-run"] || false;
         const force = args.force || false;
         if (dryRun) {
@@ -1154,10 +1154,218 @@ var init_update = __esm({
   }
 });
 
+// src/commands/browse.ts
+var browse_exports = {};
+__export(browse_exports, {
+  default: () => browse_default
+});
+import { defineCommand as defineCommand5 } from "citty";
+import * as p5 from "@clack/prompts";
+import { exec } from "child_process";
+import { promisify } from "util";
+async function showRepoDetails(repo, registry) {
+  const shortPath = repo.localPath.replace(process.env.HOME || "", "~");
+  console.log();
+  console.log(`  ${repo.entry.owner}/${repo.entry.repo}`);
+  console.log(`  ${"\u2500".repeat(40)}`);
+  console.log(`  Path: ${shortPath}`);
+  console.log(`  URL:  ${repo.entry.cloneUrl}`);
+  if (repo.entry.tags && repo.entry.tags.length > 0) {
+    console.log(`  Tags: ${repo.entry.tags.join(", ")}`);
+  } else {
+    console.log(`  Tags: (none)`);
+  }
+  if (repo.entry.description) {
+    console.log(`  Desc: ${repo.entry.description}`);
+  } else {
+    console.log(`  Desc: (none)`);
+  }
+  if (!repo.status.exists) {
+    console.log(`  Status: \u2717 Missing`);
+  } else if (!repo.status.isGitRepo) {
+    console.log(`  Status: \u2717 Not a git repo`);
+  } else if (repo.status.isDirty) {
+    console.log(`  Status: \u25CF Dirty`);
+  } else {
+    console.log(`  Status: \u2713 Clean`);
+  }
+  if (repo.entry.lastSyncedAt) {
+    console.log(`  Synced: ${formatRelativeTime2(repo.entry.lastSyncedAt)}`);
+  }
+  console.log();
+  const action = await p5.select({
+    message: "What would you like to do?",
+    options: [
+      { value: "copy", label: "Copy path to clipboard" },
+      { value: "edit-tags", label: "Edit tags" },
+      { value: "edit-desc", label: "Edit description" },
+      { value: "back", label: "Back to list" }
+    ]
+  });
+  if (p5.isCancel(action)) {
+    p5.outro("Done");
+    return;
+  }
+  switch (action) {
+    case "copy":
+      await copyToClipboard(repo.localPath);
+      p5.log.success(`Copied: ${repo.localPath}`);
+      p5.outro("Done");
+      break;
+    case "edit-tags":
+      await editTags(repo, registry);
+      break;
+    case "edit-desc":
+      await editDescription(repo, registry);
+      break;
+    case "back":
+      const { default: browseCommand } = await Promise.resolve().then(() => (init_browse(), browse_exports));
+      await browseCommand.run?.({ args: {} });
+      break;
+  }
+}
+async function editTags(repo, registry) {
+  const currentTags = repo.entry.tags?.join(", ") || "";
+  const newTags = await p5.text({
+    message: "Enter tags (comma-separated)",
+    initialValue: currentTags,
+    placeholder: "cli, typescript, framework"
+  });
+  if (p5.isCancel(newTags)) {
+    p5.outro("Cancelled");
+    return;
+  }
+  const tags = newTags ? newTags.split(",").map((t) => t.trim()).filter((t) => t.length > 0) : void 0;
+  const updatedRegistry = updateEntry(registry, repo.entry.id, { tags });
+  await writeRegistry(updatedRegistry);
+  p5.log.success(`Tags updated for ${repo.entry.owner}/${repo.entry.repo}`);
+  p5.outro("Done");
+}
+async function editDescription(repo, registry) {
+  const newDesc = await p5.text({
+    message: "Enter description",
+    initialValue: repo.entry.description || "",
+    placeholder: "A brief description of this repository"
+  });
+  if (p5.isCancel(newDesc)) {
+    p5.outro("Cancelled");
+    return;
+  }
+  const description = newDesc || void 0;
+  const updatedRegistry = updateEntry(registry, repo.entry.id, { description });
+  await writeRegistry(updatedRegistry);
+  p5.log.success(`Description updated for ${repo.entry.owner}/${repo.entry.repo}`);
+  p5.outro("Done");
+}
+async function copyToClipboard(text2) {
+  const platform = process.platform;
+  try {
+    if (platform === "darwin") {
+      await execAsync(`echo -n ${JSON.stringify(text2)} | pbcopy`);
+    } else if (platform === "linux") {
+      try {
+        await execAsync(`echo -n ${JSON.stringify(text2)} | xclip -selection clipboard`);
+      } catch {
+        await execAsync(`echo -n ${JSON.stringify(text2)} | xsel --clipboard --input`);
+      }
+    } else if (platform === "win32") {
+      await execAsync(`echo ${JSON.stringify(text2)} | clip`);
+    } else {
+      throw new Error(`Unsupported platform: ${platform}`);
+    }
+  } catch (error) {
+    throw new Error(
+      `Could not copy to clipboard. Path: ${text2}`
+    );
+  }
+}
+function formatRelativeTime2(isoString) {
+  const date = new Date(isoString);
+  const now = /* @__PURE__ */ new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 6e4);
+  const diffHours = Math.floor(diffMins / 60);
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffMins < 1) return "just now";
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays < 30) return `${diffDays}d ago`;
+  return date.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric"
+  });
+}
+var execAsync, browse_default;
+var init_browse = __esm({
+  "src/commands/browse.ts"() {
+    "use strict";
+    init_esm_shims();
+    init_registry();
+    init_git();
+    init_config();
+    execAsync = promisify(exec);
+    browse_default = defineCommand5({
+      meta: {
+        name: "browse",
+        description: "Interactively browse and manage clones"
+      },
+      args: {},
+      async run() {
+        p5.intro("clones");
+        const registry = await readRegistry();
+        if (registry.repos.length === 0) {
+          p5.log.info("No repositories in registry.");
+          p5.log.info("Use 'clones add <url>' to add a repository.");
+          p5.outro("");
+          return;
+        }
+        const s = p5.spinner();
+        s.start("Loading repositories...");
+        const repos = await Promise.all(
+          registry.repos.map(async (entry) => {
+            const localPath = getRepoPath(entry.owner, entry.repo);
+            const status = await getRepoStatus(localPath);
+            return { entry, status, localPath };
+          })
+        );
+        s.stop(`${repos.length} repositories loaded`);
+        const options = repos.map((repo2) => {
+          const name = `${repo2.entry.owner}/${repo2.entry.repo}`;
+          const hints = [];
+          if (repo2.entry.tags && repo2.entry.tags.length > 0) {
+            hints.push(repo2.entry.tags.join(", "));
+          }
+          if (!repo2.status.exists) {
+            hints.push("missing");
+          } else if (repo2.status.isDirty) {
+            hints.push("dirty");
+          }
+          return {
+            value: repo2,
+            label: name,
+            hint: hints.length > 0 ? hints.join(" \xB7 ") : void 0
+          };
+        });
+        const selected = await p5.select({
+          message: "Select a repository",
+          options
+        });
+        if (p5.isCancel(selected)) {
+          p5.outro("Cancelled");
+          return;
+        }
+        const repo = selected;
+        await showRepoDetails(repo, registry);
+      }
+    });
+  }
+});
+
 // src/cli.ts
 init_esm_shims();
-import { defineCommand as defineCommand5, runMain } from "citty";
-var main = defineCommand5({
+import { defineCommand as defineCommand6, runMain } from "citty";
+var main = defineCommand6({
   meta: {
     name: "clones",
     version: "1.0.0",
@@ -1167,7 +1375,12 @@ var main = defineCommand5({
     add: () => Promise.resolve().then(() => (init_add(), add_exports)).then((m) => m.default),
     list: () => Promise.resolve().then(() => (init_list(), list_exports)).then((m) => m.default),
     rm: () => Promise.resolve().then(() => (init_rm(), rm_exports)).then((m) => m.default),
-    update: () => Promise.resolve().then(() => (init_update(), update_exports)).then((m) => m.default)
+    sync: () => Promise.resolve().then(() => (init_sync(), sync_exports)).then((m) => m.default)
+  },
+  // Default: run interactive browser when no subcommand given
+  async run() {
+    const { default: browse } = await Promise.resolve().then(() => (init_browse(), browse_exports));
+    await browse.run?.({ args: {} });
   }
 });
 runMain(main);
