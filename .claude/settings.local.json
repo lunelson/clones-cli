@@ -1,0 +1,5 @@
+{
+  "permissions": {
+    "allow": ["WebFetch(domain:*)", "WebSearch", "Bash(npm *)", "Bash(chmod:*)", "Bash(./dist/cli.js:*)"]
+  }
+}

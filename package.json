@@ -1,0 +1,42 @@
+{
+  "name": "@lunelson/clones-cli",
+  "version": "1.0.0",
+  "description": "A read-only Git repository manager for exploration and reference",
+  "type": "module",
+  "bin": {
+    "clones": "./dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "git",
+    "clone",
+    "repository",
+    "manager",
+    "cli"
+  ],
+  "author": "lunelson",
+  "license": "MIT",
+  "dependencies": {
+    "@clack/prompts": "^0.9.1",
+    "citty": "^0.1.6",
+    "simple-git": "^3.27.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsup": "^8.3.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
