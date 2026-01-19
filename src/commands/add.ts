@@ -4,6 +4,7 @@ import { parseGitUrl, generateRepoId } from "../lib/url-parser.js";
 import { readRegistry, writeRegistry, addEntry, findEntry } from "../lib/registry.js";
 import { cloneRepo, getRepoStatus } from "../lib/git.js";
 import { getRepoPath, DEFAULTS, ensureClonesDir } from "../lib/config.js";
+import { fetchGitHubMetadata } from "../lib/github.js";
 import type { RegistryEntry } from "../types/index.js";
 
 export default defineCommand({
@@ -74,16 +75,36 @@ export default defineCommand({
       // Ensure clones directory exists
       await ensureClonesDir();
 
+      // Fetch GitHub metadata if no description provided
+      let autoDescription: string | undefined;
+      let autoTopics: string[] | undefined;
+
+      if (parsed.host === "github.com" && !args.description) {
+        s.start(`Fetching metadata from GitHub...`);
+        spinnerStarted = true;
+        const metadata = await fetchGitHubMetadata(parsed.owner, parsed.repo);
+        if (metadata) {
+          autoDescription = metadata.description || undefined;
+          autoTopics = metadata.topics.length > 0 ? metadata.topics : undefined;
+          s.stop("Metadata fetched");
+        } else {
+          s.stop("Could not fetch metadata (continuing without)");
+        }
+      }
+
       // Clone the repository
       s.start(`Cloning ${parsed.owner}/${parsed.repo}...`);
       spinnerStarted = true;
       await cloneRepo(parsed.cloneUrl, localPath);
       s.stop(`Cloned to ${localPath}`);
 
-      // Parse options
-      const tags = args.tags
+      // Parse options - merge CLI args with auto-fetched metadata
+      const userTags = args.tags
         ? args.tags.split(",").map((t: string) => t.trim())
         : undefined;
+
+      // Use user-provided tags, or fall back to GitHub topics
+      const tags = userTags || autoTopics;
 
       const updateStrategy =
         args["update-strategy"] === "ff-only" ? "ff-only" : DEFAULTS.updateStrategy;
@@ -105,7 +126,7 @@ export default defineCommand({
         owner: parsed.owner,
         repo: parsed.repo,
         cloneUrl: parsed.cloneUrl,
-        description: args.description,
+        description: args.description || autoDescription,
         tags,
         defaultRemoteName: DEFAULTS.defaultRemoteName,
         updateStrategy,

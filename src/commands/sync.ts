@@ -22,11 +22,12 @@ import {
 import { getRepoPath, getClonesDir, DEFAULTS } from "../lib/config.js";
 import { scanClonesDir, isNestedRepo } from "../lib/scan.js";
 import { parseGitUrl, generateRepoId } from "../lib/url-parser.js";
+import { fetchGitHubMetadata } from "../lib/github.js";
 import type { RegistryEntry, UpdateResult, Registry } from "../types/index.js";
 
 interface UpdateSummary {
   name: string;
-  action: "adopted" | "cloned" | "updated" | "skipped" | "error";
+  action: "adopted" | "cloned" | "updated" | "skipped" | "refreshed" | "error";
   detail?: string;
 }
 
@@ -47,6 +48,10 @@ export default defineCommand({
     force: {
       type: "boolean",
       description: "Proceed even if working tree is dirty",
+    },
+    refresh: {
+      type: "boolean",
+      description: "Refresh metadata (description, tags) from GitHub for all repos",
     },
   },
   async run({ args }) {
@@ -169,6 +174,53 @@ export default defineCommand({
     }
 
     // ═══════════════════════════════════════════════════════════════════
+    // PHASE 4: REFRESH METADATA (optional)
+    // ═══════════════════════════════════════════════════════════════════
+    if (args.refresh) {
+      p.log.step("Phase 4: Refreshing metadata from GitHub...");
+
+      const githubRepos = registry.repos.filter((r) => r.host === "github.com");
+
+      if (githubRepos.length === 0) {
+        p.log.info("  No GitHub repos to refresh");
+      } else {
+        for (const entry of githubRepos) {
+          const name = `${entry.owner}/${entry.repo}`;
+
+          if (dryRun) {
+            p.log.info(`  ↻ ${name} (would refresh)`);
+            summaries.push({ name, action: "refreshed" });
+            continue;
+          }
+
+          const metadata = await fetchGitHubMetadata(entry.owner, entry.repo);
+
+          if (metadata) {
+            const newDescription = metadata.description || undefined;
+            const newTags = metadata.topics.length > 0 ? metadata.topics : undefined;
+
+            // Only update if something changed
+            const descChanged = entry.description !== newDescription;
+            const tagsChanged = JSON.stringify(entry.tags) !== JSON.stringify(newTags);
+
+            if (descChanged || tagsChanged) {
+              registry = updateEntry(registry, entry.id, {
+                description: newDescription,
+                tags: newTags,
+              });
+              p.log.info(`  ↻ ${name} (refreshed)`);
+              summaries.push({ name, action: "refreshed" });
+            } else {
+              p.log.info(`  ○ ${name} (unchanged)`);
+            }
+          } else {
+            p.log.warn(`  ○ ${name} (could not fetch)`);
+          }
+        }
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
     // SAVE & SUMMARY
     // ═══════════════════════════════════════════════════════════════════
     if (!dryRun) {
@@ -237,12 +289,26 @@ async function adoptPhase(
     }
 
     if (!options.dryRun) {
+      // Fetch GitHub metadata if applicable
+      let description: string | undefined;
+      let tags: string[] | undefined;
+
+      if (parsed.host === "github.com") {
+        const metadata = await fetchGitHubMetadata(parsed.owner, parsed.repo);
+        if (metadata) {
+          description = metadata.description || undefined;
+          tags = metadata.topics.length > 0 ? metadata.topics : undefined;
+        }
+      }
+
       const entry: RegistryEntry = {
         id: repoId,
         host: parsed.host,
         owner: parsed.owner,
         repo: parsed.repo,
         cloneUrl: parsed.cloneUrl,
+        description,
+        tags,
         defaultRemoteName: DEFAULTS.defaultRemoteName,
         updateStrategy: DEFAULTS.updateStrategy,
         submodules: DEFAULTS.submodules,
@@ -412,6 +478,7 @@ function printSummary(summaries: UpdateSummary[], dryRun: boolean): void {
   const adopted = summaries.filter((s) => s.action === "adopted").length;
   const cloned = summaries.filter((s) => s.action === "cloned").length;
   const updated = summaries.filter((s) => s.action === "updated").length;
+  const refreshed = summaries.filter((s) => s.action === "refreshed").length;
   const skipped = summaries.filter((s) => s.action === "skipped").length;
   const errors = summaries.filter((s) => s.action === "error").length;
 
@@ -424,6 +491,7 @@ function printSummary(summaries: UpdateSummary[], dryRun: boolean): void {
   const parts: string[] = [];
   if (adopted > 0) parts.push(`${adopted} adopted`);
   if (cloned > 0) parts.push(`${cloned} cloned`);
+  if (refreshed > 0) parts.push(`${refreshed} refreshed`);
   if (updated > 0) parts.push(`${updated} updated`);
   if (skipped > 0) parts.push(`${skipped} skipped`);
   if (errors > 0) parts.push(`${errors} errors`);

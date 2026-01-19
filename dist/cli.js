@@ -326,6 +326,40 @@ var init_git = __esm({
   }
 });
 
+// src/lib/github.ts
+async function fetchGitHubMetadata(owner, repo) {
+  try {
+    const response = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}`,
+      {
+        headers: {
+          Accept: "application/vnd.github.v3+json",
+          "User-Agent": "clones-cli"
+        }
+      }
+    );
+    if (!response.ok) {
+      return null;
+    }
+    const data = await response.json();
+    return {
+      description: data.description,
+      topics: data.topics || [],
+      stargazers_count: data.stargazers_count,
+      language: data.language,
+      homepage: data.homepage
+    };
+  } catch {
+    return null;
+  }
+}
+var init_github = __esm({
+  "src/lib/github.ts"() {
+    "use strict";
+    init_esm_shims();
+  }
+});
+
 // src/commands/add.ts
 var add_exports = {};
 __export(add_exports, {
@@ -342,6 +376,7 @@ var init_add = __esm({
     init_registry();
     init_git();
     init_config();
+    init_github();
     add_default = defineCommand({
       meta: {
         name: "add",
@@ -397,11 +432,26 @@ var init_add = __esm({
             process.exit(1);
           }
           await ensureClonesDir();
+          let autoDescription;
+          let autoTopics;
+          if (parsed.host === "github.com" && !args.description) {
+            s.start(`Fetching metadata from GitHub...`);
+            spinnerStarted = true;
+            const metadata = await fetchGitHubMetadata(parsed.owner, parsed.repo);
+            if (metadata) {
+              autoDescription = metadata.description || void 0;
+              autoTopics = metadata.topics.length > 0 ? metadata.topics : void 0;
+              s.stop("Metadata fetched");
+            } else {
+              s.stop("Could not fetch metadata (continuing without)");
+            }
+          }
           s.start(`Cloning ${parsed.owner}/${parsed.repo}...`);
           spinnerStarted = true;
           await cloneRepo(parsed.cloneUrl, localPath);
           s.stop(`Cloned to ${localPath}`);
-          const tags = args.tags ? args.tags.split(",").map((t) => t.trim()) : void 0;
+          const userTags = args.tags ? args.tags.split(",").map((t) => t.trim()) : void 0;
+          const tags = userTags || autoTopics;
           const updateStrategy = args["update-strategy"] === "ff-only" ? "ff-only" : DEFAULTS.updateStrategy;
           const submodules = args.submodules === "recursive" ? "recursive" : DEFAULTS.submodules;
           const lfs = args.lfs === "always" ? "always" : args.lfs === "never" ? "never" : DEFAULTS.lfs;
@@ -411,7 +461,7 @@ var init_add = __esm({
             owner: parsed.owner,
             repo: parsed.repo,
             cloneUrl: parsed.cloneUrl,
-            description: args.description,
+            description: args.description || autoDescription,
             tags,
             defaultRemoteName: DEFAULTS.defaultRemoteName,
             updateStrategy,
@@ -889,12 +939,23 @@ async function adoptPhase(registry, options) {
       continue;
     }
     if (!options.dryRun) {
+      let description;
+      let tags;
+      if (parsed.host === "github.com") {
+        const metadata = await fetchGitHubMetadata(parsed.owner, parsed.repo);
+        if (metadata) {
+          description = metadata.description || void 0;
+          tags = metadata.topics.length > 0 ? metadata.topics : void 0;
+        }
+      }
       const entry = {
         id: repoId,
         host: parsed.host,
         owner: parsed.owner,
         repo: parsed.repo,
         cloneUrl: parsed.cloneUrl,
+        description,
+        tags,
         defaultRemoteName: DEFAULTS.defaultRemoteName,
         updateStrategy: DEFAULTS.updateStrategy,
         submodules: DEFAULTS.submodules,
@@ -1007,6 +1068,7 @@ function printSummary(summaries, dryRun) {
   const adopted = summaries.filter((s) => s.action === "adopted").length;
   const cloned = summaries.filter((s) => s.action === "cloned").length;
   const updated = summaries.filter((s) => s.action === "updated").length;
+  const refreshed = summaries.filter((s) => s.action === "refreshed").length;
   const skipped = summaries.filter((s) => s.action === "skipped").length;
   const errors = summaries.filter((s) => s.action === "error").length;
   console.log("\u2500".repeat(50));
@@ -1016,6 +1078,7 @@ function printSummary(summaries, dryRun) {
   const parts = [];
   if (adopted > 0) parts.push(`${adopted} adopted`);
   if (cloned > 0) parts.push(`${cloned} cloned`);
+  if (refreshed > 0) parts.push(`${refreshed} refreshed`);
   if (updated > 0) parts.push(`${updated} updated`);
   if (skipped > 0) parts.push(`${skipped} skipped`);
   if (errors > 0) parts.push(`${errors} errors`);
@@ -1035,6 +1098,7 @@ var init_sync = __esm({
     init_config();
     init_scan();
     init_url_parser();
+    init_github();
     sync_default = defineCommand4({
       meta: {
         name: "sync",
@@ -1052,6 +1116,10 @@ var init_sync = __esm({
         force: {
           type: "boolean",
           description: "Proceed even if working tree is dirty"
+        },
+        refresh: {
+          type: "boolean",
+          description: "Refresh metadata (description, tags) from GitHub for all repos"
         }
       },
       async run({ args }) {
@@ -1140,6 +1208,41 @@ var init_sync = __esm({
                 action: "error",
                 detail: result.error
               });
+            }
+          }
+        }
+        if (args.refresh) {
+          p4.log.step("Phase 4: Refreshing metadata from GitHub...");
+          const githubRepos = registry.repos.filter((r) => r.host === "github.com");
+          if (githubRepos.length === 0) {
+            p4.log.info("  No GitHub repos to refresh");
+          } else {
+            for (const entry of githubRepos) {
+              const name = `${entry.owner}/${entry.repo}`;
+              if (dryRun) {
+                p4.log.info(`  \u21BB ${name} (would refresh)`);
+                summaries.push({ name, action: "refreshed" });
+                continue;
+              }
+              const metadata = await fetchGitHubMetadata(entry.owner, entry.repo);
+              if (metadata) {
+                const newDescription = metadata.description || void 0;
+                const newTags = metadata.topics.length > 0 ? metadata.topics : void 0;
+                const descChanged = entry.description !== newDescription;
+                const tagsChanged = JSON.stringify(entry.tags) !== JSON.stringify(newTags);
+                if (descChanged || tagsChanged) {
+                  registry = updateEntry(registry, entry.id, {
+                    description: newDescription,
+                    tags: newTags
+                  });
+                  p4.log.info(`  \u21BB ${name} (refreshed)`);
+                  summaries.push({ name, action: "refreshed" });
+                } else {
+                  p4.log.info(`  \u25CB ${name} (unchanged)`);
+                }
+              } else {
+                p4.log.warn(`  \u25CB ${name} (could not fetch)`);
+              }
             }
           }
         }
@@ -1367,6 +1470,19 @@ async function addNewClone() {
   }
   await ensureClonesDir();
   const s = p5.spinner();
+  let autoDescription;
+  let autoTopics;
+  if (parsed.host === "github.com") {
+    s.start(`Fetching metadata from GitHub...`);
+    const metadata = await fetchGitHubMetadata(parsed.owner, parsed.repo);
+    if (metadata) {
+      autoDescription = metadata.description || void 0;
+      autoTopics = metadata.topics.length > 0 ? metadata.topics : void 0;
+      s.stop("Metadata fetched");
+    } else {
+      s.stop("Could not fetch metadata (continuing without)");
+    }
+  }
   s.start(`Cloning ${parsed.owner}/${parsed.repo}...`);
   try {
     await cloneRepo(parsed.cloneUrl, localPath);
@@ -1382,6 +1498,8 @@ async function addNewClone() {
     owner: parsed.owner,
     repo: parsed.repo,
     cloneUrl: parsed.cloneUrl,
+    description: autoDescription,
+    tags: autoTopics,
     defaultRemoteName: DEFAULTS.defaultRemoteName,
     updateStrategy: DEFAULTS.updateStrategy,
     submodules: DEFAULTS.submodules,
@@ -1447,6 +1565,7 @@ var init_browse = __esm({
     init_git();
     init_config();
     init_url_parser();
+    init_github();
     execAsync = promisify(exec);
     browse_default = defineCommand5({
       meta: {

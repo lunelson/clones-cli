@@ -12,6 +12,7 @@ import {
 import { getRepoStatus, cloneRepo, getRemoteUrl } from "../lib/git.js";
 import { getRepoPath, DEFAULTS, ensureClonesDir } from "../lib/config.js";
 import { parseGitUrl, generateRepoId } from "../lib/url-parser.js";
+import { fetchGitHubMetadata } from "../lib/github.js";
 import type { RegistryEntry, RepoStatus, Registry } from "../types/index.js";
 
 const execAsync = promisify(exec);
@@ -307,10 +308,26 @@ async function addNewClone(): Promise<void> {
     return;
   }
 
-  // Clone
+  // Fetch GitHub metadata before cloning
   await ensureClonesDir();
 
   const s = p.spinner();
+  let autoDescription: string | undefined;
+  let autoTopics: string[] | undefined;
+
+  if (parsed.host === "github.com") {
+    s.start(`Fetching metadata from GitHub...`);
+    const metadata = await fetchGitHubMetadata(parsed.owner, parsed.repo);
+    if (metadata) {
+      autoDescription = metadata.description || undefined;
+      autoTopics = metadata.topics.length > 0 ? metadata.topics : undefined;
+      s.stop("Metadata fetched");
+    } else {
+      s.stop("Could not fetch metadata (continuing without)");
+    }
+  }
+
+  // Clone
   s.start(`Cloning ${parsed.owner}/${parsed.repo}...`);
 
   try {
@@ -329,6 +346,8 @@ async function addNewClone(): Promise<void> {
     owner: parsed.owner,
     repo: parsed.repo,
     cloneUrl: parsed.cloneUrl,
+    description: autoDescription,
+    tags: autoTopics,
     defaultRemoteName: DEFAULTS.defaultRemoteName,
     updateStrategy: DEFAULTS.updateStrategy,
     submodules: DEFAULTS.submodules,
