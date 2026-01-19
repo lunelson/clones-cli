@@ -1161,9 +1161,96 @@ __export(browse_exports, {
 });
 import { defineCommand as defineCommand5 } from "citty";
 import * as p5 from "@clack/prompts";
+import search from "@inquirer/search";
 import { exec } from "child_process";
 import { promisify } from "util";
-async function showRepoDetails(repo, registry) {
+async function mainMenu() {
+  p5.intro("clones");
+  while (true) {
+    const registry = await readRegistry();
+    const repoCount = registry.repos.length;
+    const action = await p5.select({
+      message: "What would you like to do?",
+      options: [
+        {
+          value: "browse",
+          label: "Browse repositories",
+          hint: repoCount > 0 ? `${repoCount} repos` : "none yet"
+        },
+        { value: "add", label: "Add a new clone" },
+        { value: "sync", label: "Sync all clones" },
+        { value: "exit", label: "Exit" }
+      ]
+    });
+    if (p5.isCancel(action) || action === "exit") {
+      p5.outro("Goodbye!");
+      return;
+    }
+    switch (action) {
+      case "browse":
+        if (repoCount === 0) {
+          p5.log.warn("No repositories yet. Add one first!");
+        } else {
+          await browseRepos(registry);
+        }
+        break;
+      case "add":
+        await addNewClone();
+        break;
+      case "sync":
+        await runSync();
+        break;
+    }
+  }
+}
+async function browseRepos(registry) {
+  const s = p5.spinner();
+  s.start("Loading repositories...");
+  const repos = await Promise.all(
+    registry.repos.map(async (entry) => {
+      const localPath = getRepoPath(entry.owner, entry.repo);
+      const status = await getRepoStatus(localPath);
+      return { entry, status, localPath };
+    })
+  );
+  s.stop(`${repos.length} repositories loaded`);
+  try {
+    const selected = await search({
+      message: "Select a repository (type to filter)",
+      source: async (input) => {
+        const term = (input || "").toLowerCase();
+        const filtered = repos.filter((r) => {
+          const name = `${r.entry.owner}/${r.entry.repo}`.toLowerCase();
+          const tags = r.entry.tags?.join(" ").toLowerCase() || "";
+          return name.includes(term) || tags.includes(term);
+        });
+        return filtered.map((r) => {
+          const hints = [];
+          if (r.entry.tags && r.entry.tags.length > 0) {
+            hints.push(r.entry.tags.join(", "));
+          }
+          if (!r.status.exists) {
+            hints.push("missing");
+          } else if (r.status.isDirty) {
+            hints.push("dirty");
+          }
+          return {
+            name: `${r.entry.owner}/${r.entry.repo}`,
+            value: r,
+            description: hints.length > 0 ? hints.join(" \xB7 ") : void 0
+          };
+        });
+      }
+    });
+    await showRepoDetails(selected);
+  } catch (error) {
+    if (error.message?.includes("User force closed")) {
+      return;
+    }
+    throw error;
+  }
+}
+async function showRepoDetails(repo) {
   const shortPath = repo.localPath.replace(process.env.HOME || "", "~");
   console.log();
   console.log(`  ${repo.entry.owner}/${repo.entry.repo}`);
@@ -1199,28 +1286,23 @@ async function showRepoDetails(repo, registry) {
       { value: "copy", label: "Copy path to clipboard" },
       { value: "edit-tags", label: "Edit tags" },
       { value: "edit-desc", label: "Edit description" },
-      { value: "back", label: "Back to list" }
+      { value: "back", label: "Back to menu" }
     ]
   });
-  if (p5.isCancel(action)) {
-    p5.outro("Done");
+  if (p5.isCancel(action) || action === "back") {
     return;
   }
+  const registry = await readRegistry();
   switch (action) {
     case "copy":
       await copyToClipboard(repo.localPath);
       p5.log.success(`Copied: ${repo.localPath}`);
-      p5.outro("Done");
       break;
     case "edit-tags":
       await editTags(repo, registry);
       break;
     case "edit-desc":
       await editDescription(repo, registry);
-      break;
-    case "back":
-      const { default: browseCommand } = await Promise.resolve().then(() => (init_browse(), browse_exports));
-      await browseCommand.run?.({ args: {} });
       break;
   }
 }
@@ -1232,14 +1314,12 @@ async function editTags(repo, registry) {
     placeholder: "cli, typescript, framework"
   });
   if (p5.isCancel(newTags)) {
-    p5.outro("Cancelled");
     return;
   }
   const tags = newTags ? newTags.split(",").map((t) => t.trim()).filter((t) => t.length > 0) : void 0;
   const updatedRegistry = updateEntry(registry, repo.entry.id, { tags });
   await writeRegistry(updatedRegistry);
   p5.log.success(`Tags updated for ${repo.entry.owner}/${repo.entry.repo}`);
-  p5.outro("Done");
 }
 async function editDescription(repo, registry) {
   const newDesc = await p5.text({
@@ -1248,14 +1328,78 @@ async function editDescription(repo, registry) {
     placeholder: "A brief description of this repository"
   });
   if (p5.isCancel(newDesc)) {
-    p5.outro("Cancelled");
     return;
   }
   const description = newDesc || void 0;
   const updatedRegistry = updateEntry(registry, repo.entry.id, { description });
   await writeRegistry(updatedRegistry);
   p5.log.success(`Description updated for ${repo.entry.owner}/${repo.entry.repo}`);
-  p5.outro("Done");
+}
+async function addNewClone() {
+  const url = await p5.text({
+    message: "Enter Git URL (HTTPS or SSH)",
+    placeholder: "https://github.com/owner/repo"
+  });
+  if (p5.isCancel(url) || !url) {
+    return;
+  }
+  let parsed;
+  try {
+    parsed = parseGitUrl(url);
+  } catch (error) {
+    p5.log.error(`Invalid Git URL: ${url}`);
+    return;
+  }
+  const repoId = generateRepoId(parsed);
+  const localPath = getRepoPath(parsed.owner, parsed.repo);
+  p5.log.info(`Repository: ${parsed.owner}/${parsed.repo}`);
+  p5.log.info(`Host: ${parsed.host}`);
+  const registry = await readRegistry();
+  if (registry.repos.find((e) => e.id === repoId)) {
+    p5.log.error(`Already in registry: ${repoId}`);
+    return;
+  }
+  const status = await getRepoStatus(localPath);
+  if (status.exists) {
+    p5.log.error(`Directory already exists: ${localPath}`);
+    p5.log.info("It will be adopted on next sync.");
+    return;
+  }
+  await ensureClonesDir();
+  const s = p5.spinner();
+  s.start(`Cloning ${parsed.owner}/${parsed.repo}...`);
+  try {
+    await cloneRepo(parsed.cloneUrl, localPath);
+    s.stop(`Cloned to ${localPath}`);
+  } catch (error) {
+    s.stop("Clone failed");
+    p5.log.error(error instanceof Error ? error.message : String(error));
+    return;
+  }
+  const entry = {
+    id: repoId,
+    host: parsed.host,
+    owner: parsed.owner,
+    repo: parsed.repo,
+    cloneUrl: parsed.cloneUrl,
+    defaultRemoteName: DEFAULTS.defaultRemoteName,
+    updateStrategy: DEFAULTS.updateStrategy,
+    submodules: DEFAULTS.submodules,
+    lfs: DEFAULTS.lfs,
+    addedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    addedBy: "manual",
+    lastSyncedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    managed: true
+  };
+  const updatedRegistry = addEntry(registry, entry);
+  await writeRegistry(updatedRegistry);
+  p5.log.success(`Added ${parsed.owner}/${parsed.repo} to registry`);
+}
+async function runSync() {
+  p5.log.info("Running sync...");
+  console.log();
+  const { default: syncCommand } = await Promise.resolve().then(() => (init_sync(), sync_exports));
+  await syncCommand.run?.({ args: {} });
 }
 async function copyToClipboard(text2) {
   const platform = process.platform;
@@ -1274,9 +1418,7 @@ async function copyToClipboard(text2) {
       throw new Error(`Unsupported platform: ${platform}`);
     }
   } catch (error) {
-    throw new Error(
-      `Could not copy to clipboard. Path: ${text2}`
-    );
+    throw new Error(`Could not copy to clipboard. Path: ${text2}`);
   }
 }
 function formatRelativeTime2(isoString) {
@@ -1304,6 +1446,7 @@ var init_browse = __esm({
     init_registry();
     init_git();
     init_config();
+    init_url_parser();
     execAsync = promisify(exec);
     browse_default = defineCommand5({
       meta: {
@@ -1312,51 +1455,7 @@ var init_browse = __esm({
       },
       args: {},
       async run() {
-        p5.intro("clones");
-        const registry = await readRegistry();
-        if (registry.repos.length === 0) {
-          p5.log.info("No repositories in registry.");
-          p5.log.info("Use 'clones add <url>' to add a repository.");
-          p5.outro("");
-          return;
-        }
-        const s = p5.spinner();
-        s.start("Loading repositories...");
-        const repos = await Promise.all(
-          registry.repos.map(async (entry) => {
-            const localPath = getRepoPath(entry.owner, entry.repo);
-            const status = await getRepoStatus(localPath);
-            return { entry, status, localPath };
-          })
-        );
-        s.stop(`${repos.length} repositories loaded`);
-        const options = repos.map((repo2) => {
-          const name = `${repo2.entry.owner}/${repo2.entry.repo}`;
-          const hints = [];
-          if (repo2.entry.tags && repo2.entry.tags.length > 0) {
-            hints.push(repo2.entry.tags.join(", "));
-          }
-          if (!repo2.status.exists) {
-            hints.push("missing");
-          } else if (repo2.status.isDirty) {
-            hints.push("dirty");
-          }
-          return {
-            value: repo2,
-            label: name,
-            hint: hints.length > 0 ? hints.join(" \xB7 ") : void 0
-          };
-        });
-        const selected = await p5.select({
-          message: "Select a repository",
-          options
-        });
-        if (p5.isCancel(selected)) {
-          p5.outro("Cancelled");
-          return;
-        }
-        const repo = selected;
-        await showRepoDetails(repo, registry);
+        await mainMenu();
       }
     });
   }

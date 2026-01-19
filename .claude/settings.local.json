@@ -14,7 +14,8 @@
       "Bash(clones adopt -y)",
       "Bash(clones rm:*)",
       "Bash(echo:*)",
-      "Bash(clones:*)"
+      "Bash(clones:*)",
+      "Bash(npm install:*)"
     ]
   }
 }

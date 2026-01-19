@@ -1,15 +1,18 @@
 import { defineCommand } from "citty";
 import * as p from "@clack/prompts";
+import search from "@inquirer/search";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import {
   readRegistry,
   writeRegistry,
   updateEntry,
+  addEntry,
 } from "../lib/registry.js";
-import { getRepoStatus } from "../lib/git.js";
-import { getRepoPath } from "../lib/config.js";
-import type { RegistryEntry, RepoStatus } from "../types/index.js";
+import { getRepoStatus, cloneRepo, getRemoteUrl } from "../lib/git.js";
+import { getRepoPath, DEFAULTS, ensureClonesDir } from "../lib/config.js";
+import { parseGitUrl, generateRepoId } from "../lib/url-parser.js";
+import type { RegistryEntry, RepoStatus, Registry } from "../types/index.js";
 
 const execAsync = promisify(exec);
 
@@ -26,72 +29,126 @@ export default defineCommand({
   },
   args: {},
   async run() {
-    p.intro("clones");
-
-    const registry = await readRegistry();
-
-    if (registry.repos.length === 0) {
-      p.log.info("No repositories in registry.");
-      p.log.info("Use 'clones add <url>' to add a repository.");
-      p.outro("");
-      return;
-    }
-
-    // Gather status for all repos
-    const s = p.spinner();
-    s.start("Loading repositories...");
-
-    const repos: RepoInfo[] = await Promise.all(
-      registry.repos.map(async (entry) => {
-        const localPath = getRepoPath(entry.owner, entry.repo);
-        const status = await getRepoStatus(localPath);
-        return { entry, status, localPath };
-      })
-    );
-
-    s.stop(`${repos.length} repositories loaded`);
-
-    // Build select options
-    const options = repos.map((repo) => {
-      const name = `${repo.entry.owner}/${repo.entry.repo}`;
-      const hints: string[] = [];
-
-      if (repo.entry.tags && repo.entry.tags.length > 0) {
-        hints.push(repo.entry.tags.join(", "));
-      }
-      if (!repo.status.exists) {
-        hints.push("missing");
-      } else if (repo.status.isDirty) {
-        hints.push("dirty");
-      }
-
-      return {
-        value: repo,
-        label: name,
-        hint: hints.length > 0 ? hints.join(" · ") : undefined,
-      };
-    });
-
-    // Select a repository
-    const selected = await p.select({
-      message: "Select a repository",
-      options,
-    });
-
-    if (p.isCancel(selected)) {
-      p.outro("Cancelled");
-      return;
-    }
-
-    const repo = selected as RepoInfo;
-    await showRepoDetails(repo, registry);
+    await mainMenu();
   },
 });
 
-async function showRepoDetails(
-  repo: RepoInfo,
-  registry: Awaited<ReturnType<typeof readRegistry>>
-): Promise<void> {
+// ─────────────────────────────────────────────────────────────────────────────
+// MAIN MENU
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function mainMenu(): Promise<void> {
+  p.intro("clones");
+
+  while (true) {
+    const registry = await readRegistry();
+    const repoCount = registry.repos.length;
+
+    const action = await p.select({
+      message: "What would you like to do?",
+      options: [
+        {
+          value: "browse",
+          label: "Browse repositories",
+          hint: repoCount > 0 ? `${repoCount} repos` : "none yet",
+        },
+        { value: "add", label: "Add a new clone" },
+        { value: "sync", label: "Sync all clones" },
+        { value: "exit", label: "Exit" },
+      ],
+    });
+
+    if (p.isCancel(action) || action === "exit") {
+      p.outro("Goodbye!");
+      return;
+    }
+
+    switch (action) {
+      case "browse":
+        if (repoCount === 0) {
+          p.log.warn("No repositories yet. Add one first!");
+        } else {
+          await browseRepos(registry);
+        }
+        break;
+
+      case "add":
+        await addNewClone();
+        break;
+
+      case "sync":
+        await runSync();
+        break;
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BROWSE REPOS (with search)
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function browseRepos(registry: Registry): Promise<void> {
+  // Load status for all repos
+  const s = p.spinner();
+  s.start("Loading repositories...");
+
+  const repos: RepoInfo[] = await Promise.all(
+    registry.repos.map(async (entry) => {
+      const localPath = getRepoPath(entry.owner, entry.repo);
+      const status = await getRepoStatus(localPath);
+      return { entry, status, localPath };
+    })
+  );
+
+  s.stop(`${repos.length} repositories loaded`);
+
+  // Use inquirer search for type-ahead filtering
+  try {
+    const selected = await search<RepoInfo>({
+      message: "Select a repository (type to filter)",
+      source: async (input) => {
+        const term = (input || "").toLowerCase();
+        const filtered = repos.filter((r) => {
+          const name = `${r.entry.owner}/${r.entry.repo}`.toLowerCase();
+          const tags = r.entry.tags?.join(" ").toLowerCase() || "";
+          return name.includes(term) || tags.includes(term);
+        });
+
+        return filtered.map((r) => {
+          const hints: string[] = [];
+          if (r.entry.tags && r.entry.tags.length > 0) {
+            hints.push(r.entry.tags.join(", "));
+          }
+          if (!r.status.exists) {
+            hints.push("missing");
+          } else if (r.status.isDirty) {
+            hints.push("dirty");
+          }
+
+          return {
+            name: `${r.entry.owner}/${r.entry.repo}`,
+            value: r,
+            description: hints.length > 0 ? hints.join(" · ") : undefined,
+          };
+        });
+      },
+    });
+
+    await showRepoDetails(selected);
+  } catch (error) {
+    // User cancelled (Ctrl+C in inquirer throws)
+    if ((error as Error).message?.includes("User force closed")) {
+      return;
+    }
+    throw error;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// REPO DETAILS & ACTIONS
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function showRepoDetails(repo: RepoInfo): Promise<void> {
   const shortPath = repo.localPath.replace(process.env.HOME || "", "~");
 
   // Display repo info
@@ -137,20 +194,20 @@ async function showRepoDetails(
       { value: "copy", label: "Copy path to clipboard" },
       { value: "edit-tags", label: "Edit tags" },
       { value: "edit-desc", label: "Edit description" },
-      { value: "back", label: "Back to list" },
+      { value: "back", label: "Back to menu" },
     ],
   });
 
-  if (p.isCancel(action)) {
-    p.outro("Done");
+  if (p.isCancel(action) || action === "back") {
     return;
   }
+
+  const registry = await readRegistry();
 
   switch (action) {
     case "copy":
       await copyToClipboard(repo.localPath);
       p.log.success(`Copied: ${repo.localPath}`);
-      p.outro("Done");
       break;
 
     case "edit-tags":
@@ -160,19 +217,10 @@ async function showRepoDetails(
     case "edit-desc":
       await editDescription(repo, registry);
       break;
-
-    case "back":
-      // Re-run the browse command (recursive)
-      const { default: browseCommand } = await import("./browse.js");
-      await browseCommand.run?.({ args: {} } as any);
-      break;
   }
 }
 
-async function editTags(
-  repo: RepoInfo,
-  registry: Awaited<ReturnType<typeof readRegistry>>
-): Promise<void> {
+async function editTags(repo: RepoInfo, registry: Registry): Promise<void> {
   const currentTags = repo.entry.tags?.join(", ") || "";
 
   const newTags = await p.text({
@@ -182,7 +230,6 @@ async function editTags(
   });
 
   if (p.isCancel(newTags)) {
-    p.outro("Cancelled");
     return;
   }
 
@@ -197,13 +244,9 @@ async function editTags(
   await writeRegistry(updatedRegistry);
 
   p.log.success(`Tags updated for ${repo.entry.owner}/${repo.entry.repo}`);
-  p.outro("Done");
 }
 
-async function editDescription(
-  repo: RepoInfo,
-  registry: Awaited<ReturnType<typeof readRegistry>>
-): Promise<void> {
+async function editDescription(repo: RepoInfo, registry: Registry): Promise<void> {
   const newDesc = await p.text({
     message: "Enter description",
     initialValue: repo.entry.description || "",
@@ -211,7 +254,6 @@ async function editDescription(
   });
 
   if (p.isCancel(newDesc)) {
-    p.outro("Cancelled");
     return;
   }
 
@@ -221,8 +263,104 @@ async function editDescription(
   await writeRegistry(updatedRegistry);
 
   p.log.success(`Description updated for ${repo.entry.owner}/${repo.entry.repo}`);
-  p.outro("Done");
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ADD NEW CLONE
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function addNewClone(): Promise<void> {
+  const url = await p.text({
+    message: "Enter Git URL (HTTPS or SSH)",
+    placeholder: "https://github.com/owner/repo",
+  });
+
+  if (p.isCancel(url) || !url) {
+    return;
+  }
+
+  let parsed;
+  try {
+    parsed = parseGitUrl(url);
+  } catch (error) {
+    p.log.error(`Invalid Git URL: ${url}`);
+    return;
+  }
+
+  const repoId = generateRepoId(parsed);
+  const localPath = getRepoPath(parsed.owner, parsed.repo);
+
+  p.log.info(`Repository: ${parsed.owner}/${parsed.repo}`);
+  p.log.info(`Host: ${parsed.host}`);
+
+  // Check if already exists
+  const registry = await readRegistry();
+  if (registry.repos.find((e) => e.id === repoId)) {
+    p.log.error(`Already in registry: ${repoId}`);
+    return;
+  }
+
+  const status = await getRepoStatus(localPath);
+  if (status.exists) {
+    p.log.error(`Directory already exists: ${localPath}`);
+    p.log.info("It will be adopted on next sync.");
+    return;
+  }
+
+  // Clone
+  await ensureClonesDir();
+
+  const s = p.spinner();
+  s.start(`Cloning ${parsed.owner}/${parsed.repo}...`);
+
+  try {
+    await cloneRepo(parsed.cloneUrl, localPath);
+    s.stop(`Cloned to ${localPath}`);
+  } catch (error) {
+    s.stop("Clone failed");
+    p.log.error(error instanceof Error ? error.message : String(error));
+    return;
+  }
+
+  // Add to registry
+  const entry: RegistryEntry = {
+    id: repoId,
+    host: parsed.host,
+    owner: parsed.owner,
+    repo: parsed.repo,
+    cloneUrl: parsed.cloneUrl,
+    defaultRemoteName: DEFAULTS.defaultRemoteName,
+    updateStrategy: DEFAULTS.updateStrategy,
+    submodules: DEFAULTS.submodules,
+    lfs: DEFAULTS.lfs,
+    addedAt: new Date().toISOString(),
+    addedBy: "manual",
+    lastSyncedAt: new Date().toISOString(),
+    managed: true,
+  };
+
+  const updatedRegistry = addEntry(registry, entry);
+  await writeRegistry(updatedRegistry);
+
+  p.log.success(`Added ${parsed.owner}/${parsed.repo} to registry`);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SYNC
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function runSync(): Promise<void> {
+  p.log.info("Running sync...");
+  console.log();
+
+  // Import and run the sync command
+  const { default: syncCommand } = await import("./sync.js");
+  await syncCommand.run?.({ args: {} } as any);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UTILITIES
+// ─────────────────────────────────────────────────────────────────────────────
 
 async function copyToClipboard(text: string): Promise<void> {
   const platform = process.platform;
@@ -231,7 +369,6 @@ async function copyToClipboard(text: string): Promise<void> {
     if (platform === "darwin") {
       await execAsync(`echo -n ${JSON.stringify(text)} | pbcopy`);
     } else if (platform === "linux") {
-      // Try xclip first, fall back to xsel
       try {
         await execAsync(`echo -n ${JSON.stringify(text)} | xclip -selection clipboard`);
       } catch {
@@ -243,10 +380,7 @@ async function copyToClipboard(text: string): Promise<void> {
       throw new Error(`Unsupported platform: ${platform}`);
     }
   } catch (error) {
-    // Fallback: just tell the user the path
-    throw new Error(
-      `Could not copy to clipboard. Path: ${text}`
-    );
+    throw new Error(`Could not copy to clipboard. Path: ${text}`);
   }
 }
 
