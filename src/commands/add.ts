@@ -41,6 +41,16 @@ export default defineCommand({
       type: "string",
       description: "LFS handling: auto (default), always, or never",
     },
+    full: {
+      type: "boolean",
+      description: "Clone full history (default: shallow clone with depth 1)",
+      default: false,
+    },
+    "all-branches": {
+      type: "boolean",
+      description: "Clone all branches (default: single branch only)",
+      default: false,
+    },
   },
   async run({ args }) {
     p.intro("clones add");
@@ -104,7 +114,10 @@ export default defineCommand({
       spinnerStarted = true;
 
       try {
-        await cloneRepo(parsed.cloneUrl, localPath);
+        await cloneRepo(parsed.cloneUrl, localPath, {
+          fullHistory: args.full,
+          allBranches: args["all-branches"],
+        });
       } catch (cloneError) {
         s.stop("Clone failed");
 

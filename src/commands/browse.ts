@@ -20,6 +20,18 @@ import type { RegistryEntry, RepoStatus, Registry } from "../types/index.js";
 
 const execAsync = promisify(exec);
 
+// Custom error for clean exit propagation through nested async calls
+class ExitRequestedError extends Error {
+  constructor() {
+    super("Exit requested");
+    this.name = "ExitRequestedError";
+  }
+}
+
+function requestExit(): never {
+  throw new ExitRequestedError();
+}
+
 interface RepoInfo {
   entry: RegistryEntry;
   status: RepoStatus;
@@ -44,46 +56,53 @@ export default defineCommand({
 async function mainMenu(): Promise<void> {
   p.intro("clones");
 
-  while (true) {
-    const registry = await readRegistry();
-    const repoCount = registry.repos.length;
+  try {
+    while (true) {
+      const registry = await readRegistry();
+      const repoCount = registry.repos.length;
 
-    const action = await p.select({
-      message: "What would you like to do?",
-      options: [
-        {
-          value: "browse",
-          label: "Browse repositories",
-          hint: repoCount > 0 ? `${repoCount} repos` : "none yet",
-        },
-        { value: "add", label: "Add a new clone" },
-        { value: "sync", label: "Sync all clones" },
-        { value: "exit", label: "Exit" },
-      ],
-    });
+      const action = await p.select({
+        message: "What would you like to do?",
+        options: [
+          {
+            value: "browse",
+            label: "Browse repositories",
+            hint: repoCount > 0 ? `${repoCount} repos` : "none yet",
+          },
+          { value: "add", label: "Add a new clone" },
+          { value: "sync", label: "Sync all clones" },
+          { value: "exit", label: "Exit" },
+        ],
+      });
 
-    if (p.isCancel(action) || action === "exit") {
+      if (p.isCancel(action) || action === "exit") {
+        requestExit();
+      }
+
+      switch (action) {
+        case "browse":
+          if (repoCount === 0) {
+            p.log.warn("No repositories yet. Add one first!");
+          } else {
+            await browseRepos(registry);
+          }
+          break;
+
+        case "add":
+          await addNewClone();
+          break;
+
+        case "sync":
+          await runSync();
+          break;
+      }
+    }
+  } catch (error) {
+    if (error instanceof ExitRequestedError) {
       p.outro("Goodbye!");
       return;
     }
-
-    switch (action) {
-      case "browse":
-        if (repoCount === 0) {
-          p.log.warn("No repositories yet. Add one first!");
-        } else {
-          await browseRepos(registry);
-        }
-        break;
-
-      case "add":
-        await addNewClone();
-        break;
-
-      case "sync":
-        await runSync();
-        break;
-    }
+    throw error;
   }
 }
 
@@ -140,9 +159,9 @@ async function browseRepos(registry: Registry): Promise<void> {
 
     await showRepoDetails(selected);
   } catch (error) {
-    // User cancelled (Ctrl+C in inquirer throws)
+    // User cancelled (Ctrl+C/ESC in inquirer throws) - propagate as exit
     if ((error as Error).message?.includes("User force closed")) {
-      return;
+      requestExit();
     }
     throw error;
   }
@@ -199,10 +218,15 @@ async function showRepoDetails(repo: RepoInfo): Promise<void> {
       { value: "edit-tags", label: "Edit tags" },
       { value: "edit-desc", label: "Edit description" },
       { value: "back", label: "Back to menu" },
+      { value: "exit", label: "Exit" },
     ],
   });
 
-  if (p.isCancel(action) || action === "back") {
+  if (p.isCancel(action) || action === "exit") {
+    requestExit();
+  }
+
+  if (action === "back") {
     return;
   }
 

@@ -203,7 +203,14 @@ import { join as join3 } from "path";
 async function cloneRepo(url, localPath, options = {}) {
   const git = simpleGit();
   const remoteName = options.remoteName || "origin";
-  await git.clone(url, localPath, ["--origin", remoteName]);
+  const cloneArgs = ["--origin", remoteName];
+  if (!options.fullHistory) {
+    cloneArgs.push("--depth", "1");
+  }
+  if (!options.allBranches) {
+    cloneArgs.push("--single-branch");
+  }
+  await git.clone(url, localPath, cloneArgs);
 }
 async function fetchWithPrune(localPath, remoteName = "origin") {
   const git = simpleGit(localPath);
@@ -416,6 +423,16 @@ var init_add = __esm({
         lfs: {
           type: "string",
           description: "LFS handling: auto (default), always, or never"
+        },
+        full: {
+          type: "boolean",
+          description: "Clone full history (default: shallow clone with depth 1)",
+          default: false
+        },
+        "all-branches": {
+          type: "boolean",
+          description: "Clone all branches (default: single branch only)",
+          default: false
         }
       },
       async run({ args }) {
@@ -460,7 +477,10 @@ var init_add = __esm({
           s.start(`Cloning ${parsed.owner}/${parsed.repo}...`);
           spinnerStarted = true;
           try {
-            await cloneRepo(parsed.cloneUrl, localPath);
+            await cloneRepo(parsed.cloneUrl, localPath, {
+              fullHistory: args.full,
+              allBranches: args["all-branches"]
+            });
           } catch (cloneError) {
             s.stop("Clone failed");
             if (!ownerExistedBefore && existsSync3(ownerDir)) {
@@ -1303,43 +1323,53 @@ import { promisify } from "util";
 import { existsSync as existsSync7 } from "fs";
 import { rm as rm4 } from "fs/promises";
 import { join as join7 } from "path";
+function requestExit() {
+  throw new ExitRequestedError();
+}
 async function mainMenu() {
   p5.intro("clones");
-  while (true) {
-    const registry = await readRegistry();
-    const repoCount = registry.repos.length;
-    const action = await p5.select({
-      message: "What would you like to do?",
-      options: [
-        {
-          value: "browse",
-          label: "Browse repositories",
-          hint: repoCount > 0 ? `${repoCount} repos` : "none yet"
-        },
-        { value: "add", label: "Add a new clone" },
-        { value: "sync", label: "Sync all clones" },
-        { value: "exit", label: "Exit" }
-      ]
-    });
-    if (p5.isCancel(action) || action === "exit") {
+  try {
+    while (true) {
+      const registry = await readRegistry();
+      const repoCount = registry.repos.length;
+      const action = await p5.select({
+        message: "What would you like to do?",
+        options: [
+          {
+            value: "browse",
+            label: "Browse repositories",
+            hint: repoCount > 0 ? `${repoCount} repos` : "none yet"
+          },
+          { value: "add", label: "Add a new clone" },
+          { value: "sync", label: "Sync all clones" },
+          { value: "exit", label: "Exit" }
+        ]
+      });
+      if (p5.isCancel(action) || action === "exit") {
+        requestExit();
+      }
+      switch (action) {
+        case "browse":
+          if (repoCount === 0) {
+            p5.log.warn("No repositories yet. Add one first!");
+          } else {
+            await browseRepos(registry);
+          }
+          break;
+        case "add":
+          await addNewClone();
+          break;
+        case "sync":
+          await runSync();
+          break;
+      }
+    }
+  } catch (error) {
+    if (error instanceof ExitRequestedError) {
       p5.outro("Goodbye!");
       return;
     }
-    switch (action) {
-      case "browse":
-        if (repoCount === 0) {
-          p5.log.warn("No repositories yet. Add one first!");
-        } else {
-          await browseRepos(registry);
-        }
-        break;
-      case "add":
-        await addNewClone();
-        break;
-      case "sync":
-        await runSync();
-        break;
-    }
+    throw error;
   }
 }
 async function browseRepos(registry) {
@@ -1384,7 +1414,7 @@ async function browseRepos(registry) {
     await showRepoDetails(selected);
   } catch (error) {
     if (error.message?.includes("User force closed")) {
-      return;
+      requestExit();
     }
     throw error;
   }
@@ -1425,10 +1455,14 @@ async function showRepoDetails(repo) {
       { value: "copy", label: "Copy path to clipboard" },
       { value: "edit-tags", label: "Edit tags" },
       { value: "edit-desc", label: "Edit description" },
-      { value: "back", label: "Back to menu" }
+      { value: "back", label: "Back to menu" },
+      { value: "exit", label: "Exit" }
     ]
   });
-  if (p5.isCancel(action) || action === "back") {
+  if (p5.isCancel(action) || action === "exit") {
+    requestExit();
+  }
+  if (action === "back") {
     return;
   }
   const registry = await readRegistry();
@@ -1609,7 +1643,7 @@ function formatRelativeTime2(isoString) {
     day: "numeric"
   });
 }
-var execAsync, browse_default;
+var execAsync, ExitRequestedError, browse_default;
 var init_browse = __esm({
   "src/commands/browse.ts"() {
     "use strict";
@@ -1620,6 +1654,12 @@ var init_browse = __esm({
     init_url_parser();
     init_github();
     execAsync = promisify(exec);
+    ExitRequestedError = class extends Error {
+      constructor() {
+        super("Exit requested");
+        this.name = "ExitRequestedError";
+      }
+    };
     browse_default = defineCommand5({
       meta: {
         name: "browse",

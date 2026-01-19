@@ -5,16 +5,35 @@ import type { RepoStatus } from "../types/index.js";
 
 /**
  * Clone a repository to a local path
+ *
+ * By default uses shallow clone (--depth 1) and single branch (--single-branch)
+ * for faster cloning. Use fullHistory and allBranches options to override.
  */
 export async function cloneRepo(
   url: string,
   localPath: string,
-  options: { remoteName?: string } = {}
+  options: {
+    remoteName?: string;
+    fullHistory?: boolean;
+    allBranches?: boolean;
+  } = {}
 ): Promise<void> {
   const git = simpleGit();
   const remoteName = options.remoteName || "origin";
 
-  await git.clone(url, localPath, ["--origin", remoteName]);
+  const cloneArgs: string[] = ["--origin", remoteName];
+
+  // Default to shallow clone unless fullHistory is requested
+  if (!options.fullHistory) {
+    cloneArgs.push("--depth", "1");
+  }
+
+  // Default to single branch unless allBranches is requested
+  if (!options.allBranches) {
+    cloneArgs.push("--single-branch");
+  }
+
+  await git.clone(url, localPath, cloneArgs);
 }
 
 /**
