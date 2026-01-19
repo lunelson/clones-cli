@@ -19,8 +19,14 @@ var init_esm_shims = __esm({
 });
 
 // src/lib/url-parser.ts
+function normalizeGitUrl(url) {
+  return url.replace(
+    /\/(tree|blob|commit|pull|issues|releases|tags|actions|wiki|discussions|security|pulse|graphs|network|settings)(\/.*)?$/,
+    ""
+  );
+}
 function parseGitUrl(url) {
-  url = url.trim();
+  url = normalizeGitUrl(url.trim());
   const sshMatch = url.match(/^git@([^:]+):([^/]+)\/(.+?)(?:\.git)?$/);
   if (sshMatch) {
     const [, host, owner, repo] = sshMatch;
@@ -367,6 +373,9 @@ __export(add_exports, {
 });
 import { defineCommand } from "citty";
 import * as p from "@clack/prompts";
+import { existsSync as existsSync3 } from "fs";
+import { rm } from "fs/promises";
+import { join as join4 } from "path";
 var add_default;
 var init_add = __esm({
   "src/commands/add.ts"() {
@@ -446,9 +455,22 @@ var init_add = __esm({
               s.stop("Could not fetch metadata (continuing without)");
             }
           }
+          const ownerDir = join4(getClonesDir(), parsed.owner);
+          const ownerExistedBefore = existsSync3(ownerDir);
           s.start(`Cloning ${parsed.owner}/${parsed.repo}...`);
           spinnerStarted = true;
-          await cloneRepo(parsed.cloneUrl, localPath);
+          try {
+            await cloneRepo(parsed.cloneUrl, localPath);
+          } catch (cloneError) {
+            s.stop("Clone failed");
+            if (!ownerExistedBefore && existsSync3(ownerDir)) {
+              try {
+                await rm(ownerDir, { recursive: true, force: true });
+              } catch {
+              }
+            }
+            throw cloneError;
+          }
           s.stop(`Cloned to ${localPath}`);
           const userTags = args.tags ? args.tags.split(",").map((t) => t.trim()) : void 0;
           const tags = userTags || autoTopics;
@@ -684,8 +706,8 @@ __export(rm_exports, {
 });
 import { defineCommand as defineCommand3 } from "citty";
 import * as p3 from "@clack/prompts";
-import { rm } from "fs/promises";
-import { existsSync as existsSync3 } from "fs";
+import { rm as rm2 } from "fs/promises";
+import { existsSync as existsSync4 } from "fs";
 var rm_default;
 var init_rm = __esm({
   "src/commands/rm.ts"() {
@@ -733,7 +755,7 @@ var init_rm = __esm({
           process.exit(1);
         }
         const localPath = getRepoPath(owner, repo);
-        const diskExists = existsSync3(localPath);
+        const diskExists = existsSync4(localPath);
         p3.log.info(`Repository: ${owner}/${repo}`);
         p3.log.info(`Registry ID: ${entry.id}`);
         p3.log.info(`Local path: ${localPath}`);
@@ -763,7 +785,7 @@ var init_rm = __esm({
           const s = p3.spinner();
           s.start(`Deleting ${localPath}...`);
           try {
-            await rm(localPath, { recursive: true, force: true });
+            await rm2(localPath, { recursive: true, force: true });
             s.stop(`Deleted ${localPath}`);
           } catch (error) {
             s.stop("Failed to delete directory");
@@ -788,8 +810,8 @@ var init_rm = __esm({
 
 // src/lib/scan.ts
 import { readdir, stat, lstat } from "fs/promises";
-import { join as join4 } from "path";
-import { existsSync as existsSync4 } from "fs";
+import { join as join5 } from "path";
+import { existsSync as existsSync5 } from "fs";
 async function isSymlink(path2) {
   try {
     const stats = await lstat(path2);
@@ -810,7 +832,7 @@ async function scanClonesDir() {
   const clonesDir = getClonesDir();
   const discovered = [];
   const skipped = [];
-  if (!existsSync4(clonesDir)) {
+  if (!existsSync5(clonesDir)) {
     return { discovered, skipped };
   }
   let ownerDirs;
@@ -827,7 +849,7 @@ async function scanClonesDir() {
     if (owner.startsWith(".") || owner === "registry.json") {
       continue;
     }
-    const ownerPath = join4(clonesDir, owner);
+    const ownerPath = join5(clonesDir, owner);
     if (await isSymlink(ownerPath)) {
       skipped.push({ path: ownerPath, reason: "Symlink (skipped)" });
       continue;
@@ -849,7 +871,7 @@ async function scanClonesDir() {
       if (repo.startsWith(".")) {
         continue;
       }
-      const repoPath = join4(ownerPath, repo);
+      const repoPath = join5(ownerPath, repo);
       if (await isSymlink(repoPath)) {
         skipped.push({ path: repoPath, reason: "Symlink (skipped)" });
         continue;
@@ -857,8 +879,8 @@ async function scanClonesDir() {
       if (!await isDirectory(repoPath)) {
         continue;
       }
-      const gitPath = join4(repoPath, ".git");
-      const hasGit = existsSync4(gitPath);
+      const gitPath = join5(repoPath, ".git");
+      const hasGit = existsSync5(gitPath);
       if (!hasGit) {
         skipped.push({ path: repoPath, reason: "No .git directory" });
         continue;
@@ -874,7 +896,7 @@ async function scanClonesDir() {
   return { discovered, skipped };
 }
 async function isNestedRepo(localPath) {
-  const gitPath = join4(localPath, ".git");
+  const gitPath = join5(localPath, ".git");
   try {
     const stats = await lstat(gitPath);
     if (stats.isFile()) {
@@ -883,9 +905,9 @@ async function isNestedRepo(localPath) {
     const clonesDir = getClonesDir();
     let current = localPath;
     while (current !== clonesDir && current !== "/") {
-      const parent = join4(current, "..");
-      const parentGit = join4(parent, ".git");
-      if (existsSync4(parentGit) && parent !== clonesDir) {
+      const parent = join5(current, "..");
+      const parentGit = join5(parent, ".git");
+      if (existsSync5(parentGit) && parent !== clonesDir) {
         return true;
       }
       current = parent;
@@ -910,6 +932,9 @@ __export(sync_exports, {
 });
 import { defineCommand as defineCommand4 } from "citty";
 import * as p4 from "@clack/prompts";
+import { existsSync as existsSync6 } from "fs";
+import { rm as rm3 } from "fs/promises";
+import { join as join6 } from "path";
 async function adoptPhase(registry, options) {
   const adopted = [];
   let updatedRegistry = registry;
@@ -987,6 +1012,8 @@ async function clonePhase(registry, options) {
       cloned.push({ owner: entry.owner, repo: entry.repo });
       continue;
     }
+    const ownerDir = join6(getClonesDir(), entry.owner);
+    const ownerExistedBefore = existsSync6(ownerDir);
     const s = p4.spinner();
     s.start(`  Cloning ${name}...`);
     try {
@@ -997,6 +1024,12 @@ async function clonePhase(registry, options) {
       cloned.push({ owner: entry.owner, repo: entry.repo });
     } catch (error) {
       s.stop(`  \u2717 ${name} (clone failed)`);
+      if (!ownerExistedBefore && existsSync6(ownerDir)) {
+        try {
+          await rm3(ownerDir, { recursive: true, force: true });
+        } catch {
+        }
+      }
       errors.push({
         name,
         error: error instanceof Error ? error.message : String(error)
@@ -1267,6 +1300,9 @@ import * as p5 from "@clack/prompts";
 import search from "@inquirer/search";
 import { exec } from "child_process";
 import { promisify } from "util";
+import { existsSync as existsSync7 } from "fs";
+import { rm as rm4 } from "fs/promises";
+import { join as join7 } from "path";
 async function mainMenu() {
   p5.intro("clones");
   while (true) {
@@ -1484,12 +1520,20 @@ async function addNewClone() {
       s.stop("Could not fetch metadata (continuing without)");
     }
   }
+  const ownerDir = join7(getClonesDir(), parsed.owner);
+  const ownerExistedBefore = existsSync7(ownerDir);
   s.start(`Cloning ${parsed.owner}/${parsed.repo}...`);
   try {
     await cloneRepo(parsed.cloneUrl, localPath);
     s.stop(`Cloned to ${localPath}`);
   } catch (error) {
     s.stop("Clone failed");
+    if (!ownerExistedBefore && existsSync7(ownerDir)) {
+      try {
+        await rm4(ownerDir, { recursive: true, force: true });
+      } catch {
+      }
+    }
     p5.log.error(error instanceof Error ? error.message : String(error));
     return;
   }

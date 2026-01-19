@@ -1,9 +1,12 @@
 import { defineCommand } from "citty";
 import * as p from "@clack/prompts";
+import { existsSync } from "node:fs";
+import { rm } from "node:fs/promises";
+import { join } from "node:path";
 import { parseGitUrl, generateRepoId } from "../lib/url-parser.js";
 import { readRegistry, writeRegistry, addEntry, findEntry } from "../lib/registry.js";
 import { cloneRepo, getRepoStatus } from "../lib/git.js";
-import { getRepoPath, DEFAULTS, ensureClonesDir } from "../lib/config.js";
+import { getRepoPath, getClonesDir, DEFAULTS, ensureClonesDir } from "../lib/config.js";
 import { fetchGitHubMetadata } from "../lib/github.js";
 import type { RegistryEntry } from "../types/index.js";
 
@@ -92,10 +95,31 @@ export default defineCommand({
         }
       }
 
+      // Track what exists before clone for rollback
+      const ownerDir = join(getClonesDir(), parsed.owner);
+      const ownerExistedBefore = existsSync(ownerDir);
+
       // Clone the repository
       s.start(`Cloning ${parsed.owner}/${parsed.repo}...`);
       spinnerStarted = true;
-      await cloneRepo(parsed.cloneUrl, localPath);
+
+      try {
+        await cloneRepo(parsed.cloneUrl, localPath);
+      } catch (cloneError) {
+        s.stop("Clone failed");
+
+        // Rollback: remove directories created by the failed clone
+        if (!ownerExistedBefore && existsSync(ownerDir)) {
+          try {
+            await rm(ownerDir, { recursive: true, force: true });
+          } catch {
+            // Ignore cleanup errors
+          }
+        }
+
+        throw cloneError;
+      }
+
       s.stop(`Cloned to ${localPath}`);
 
       // Parse options - merge CLI args with auto-fetched metadata

@@ -3,6 +3,7 @@ import {
   parseGitUrl,
   generateRepoId,
   isValidGitUrl,
+  normalizeGitUrl,
 } from "../../src/lib/url-parser.js";
 
 describe("parseGitUrl", () => {
@@ -155,5 +156,104 @@ describe("isValidGitUrl", () => {
 
   it("returns false for empty string", () => {
     expect(isValidGitUrl("")).toBe(false);
+  });
+});
+
+describe("normalizeGitUrl", () => {
+  it("strips /tree/branch from URL", () => {
+    expect(normalizeGitUrl("https://github.com/owner/repo/tree/main")).toBe(
+      "https://github.com/owner/repo"
+    );
+  });
+
+  it("strips /tree/branch/path from URL", () => {
+    expect(
+      normalizeGitUrl("https://github.com/owner/repo/tree/main/src/lib")
+    ).toBe("https://github.com/owner/repo");
+  });
+
+  it("strips /blob/branch/file from URL", () => {
+    expect(
+      normalizeGitUrl("https://github.com/owner/repo/blob/main/README.md")
+    ).toBe("https://github.com/owner/repo");
+  });
+
+  it("strips /commit/hash from URL", () => {
+    expect(
+      normalizeGitUrl("https://github.com/owner/repo/commit/abc123")
+    ).toBe("https://github.com/owner/repo");
+  });
+
+  it("strips /pull/number from URL", () => {
+    expect(normalizeGitUrl("https://github.com/owner/repo/pull/123")).toBe(
+      "https://github.com/owner/repo"
+    );
+  });
+
+  it("strips /issues from URL", () => {
+    expect(normalizeGitUrl("https://github.com/owner/repo/issues")).toBe(
+      "https://github.com/owner/repo"
+    );
+  });
+
+  it("strips /releases from URL", () => {
+    expect(normalizeGitUrl("https://github.com/owner/repo/releases")).toBe(
+      "https://github.com/owner/repo"
+    );
+  });
+
+  it("strips /actions from URL", () => {
+    expect(normalizeGitUrl("https://github.com/owner/repo/actions")).toBe(
+      "https://github.com/owner/repo"
+    );
+  });
+
+  it("leaves clean URLs unchanged", () => {
+    expect(normalizeGitUrl("https://github.com/owner/repo")).toBe(
+      "https://github.com/owner/repo"
+    );
+  });
+
+  it("leaves URLs with .git unchanged", () => {
+    expect(normalizeGitUrl("https://github.com/owner/repo.git")).toBe(
+      "https://github.com/owner/repo.git"
+    );
+  });
+});
+
+describe("parseGitUrl with web UI URLs", () => {
+  it("parses GitHub tree URL", () => {
+    const result = parseGitUrl("https://github.com/SBoudrias/Inquirer.js/tree/main");
+
+    expect(result).toEqual({
+      host: "github.com",
+      owner: "SBoudrias",
+      repo: "Inquirer.js",
+      cloneUrl: "https://github.com/SBoudrias/Inquirer.js.git",
+    });
+  });
+
+  it("parses GitHub blob URL", () => {
+    const result = parseGitUrl(
+      "https://github.com/owner/repo/blob/main/package.json"
+    );
+
+    expect(result).toEqual({
+      host: "github.com",
+      owner: "owner",
+      repo: "repo",
+      cloneUrl: "https://github.com/owner/repo.git",
+    });
+  });
+
+  it("parses GitHub pull request URL", () => {
+    const result = parseGitUrl("https://github.com/owner/repo/pull/42");
+
+    expect(result).toEqual({
+      host: "github.com",
+      owner: "owner",
+      repo: "repo",
+      cloneUrl: "https://github.com/owner/repo.git",
+    });
   });
 });

@@ -1,16 +1,32 @@
 import type { ParsedGitUrl } from "../types/index.js";
 
 /**
+ * Normalize a Git URL by stripping GitHub/GitLab web UI paths
+ *
+ * Converts URLs like:
+ * - https://github.com/owner/repo/tree/main → https://github.com/owner/repo
+ * - https://github.com/owner/repo/blob/main/file.ts → https://github.com/owner/repo
+ */
+export function normalizeGitUrl(url: string): string {
+  // Strip GitHub/GitLab web UI paths (tree, blob, commit, pull, issues, etc.)
+  return url.replace(
+    /\/(tree|blob|commit|pull|issues|releases|tags|actions|wiki|discussions|security|pulse|graphs|network|settings)(\/.*)?$/,
+    ""
+  );
+}
+
+/**
  * Parse a Git URL (SSH or HTTPS) into its components
  *
  * Supports:
  * - SSH: git@github.com:owner/repo.git
  * - HTTPS: https://github.com/owner/repo.git
  * - HTTPS without .git: https://github.com/owner/repo
+ * - GitHub web UI URLs (normalized automatically)
  */
 export function parseGitUrl(url: string): ParsedGitUrl {
-  // Normalize: trim whitespace
-  url = url.trim();
+  // Normalize: trim whitespace and strip web UI paths
+  url = normalizeGitUrl(url.trim());
 
   // SSH format: git@host:owner/repo.git
   const sshMatch = url.match(/^git@([^:]+):([^/]+)\/(.+?)(?:\.git)?$/);

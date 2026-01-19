@@ -1,5 +1,8 @@
 import { defineCommand } from "citty";
 import * as p from "@clack/prompts";
+import { existsSync } from "node:fs";
+import { rm } from "node:fs/promises";
+import { join } from "node:path";
 import {
   readRegistry,
   writeRegistry,
@@ -362,6 +365,10 @@ async function clonePhase(
       continue;
     }
 
+    // Track what exists before clone for rollback
+    const ownerDir = join(getClonesDir(), entry.owner);
+    const ownerExistedBefore = existsSync(ownerDir);
+
     // Clone the repo
     const s = p.spinner();
     s.start(`  Cloning ${name}...`);
@@ -374,6 +381,16 @@ async function clonePhase(
       cloned.push({ owner: entry.owner, repo: entry.repo });
     } catch (error) {
       s.stop(`  ✗ ${name} (clone failed)`);
+
+      // Rollback: remove directories created by the failed clone
+      if (!ownerExistedBefore && existsSync(ownerDir)) {
+        try {
+          await rm(ownerDir, { recursive: true, force: true });
+        } catch {
+          // Ignore cleanup errors
+        }
+      }
+
       errors.push({
         name,
         error: error instanceof Error ? error.message : String(error),
