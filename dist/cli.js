@@ -1398,8 +1398,9 @@ async function showRepoDetails(repo) {
   const registry = await readRegistry();
   switch (action) {
     case "copy":
-      await copyToClipboard(repo.localPath);
-      p5.log.success(`Copied: ${repo.localPath}`);
+      const userPath = toUserPath(repo.localPath);
+      await copyToClipboard(userPath);
+      p5.log.success(`Copied: ${userPath}`);
       break;
     case "edit-tags":
       await editTags(repo, registry);
@@ -1521,14 +1522,15 @@ async function runSync() {
 }
 async function copyToClipboard(text2) {
   const platform = process.platform;
+  const escaped = text2.replace(/'/g, "'\\''");
   try {
     if (platform === "darwin") {
-      await execAsync(`echo -n ${JSON.stringify(text2)} | pbcopy`);
+      await execAsync(`printf '%s' '${escaped}' | pbcopy`);
     } else if (platform === "linux") {
       try {
-        await execAsync(`echo -n ${JSON.stringify(text2)} | xclip -selection clipboard`);
+        await execAsync(`printf '%s' '${escaped}' | xclip -selection clipboard`);
       } catch {
-        await execAsync(`echo -n ${JSON.stringify(text2)} | xsel --clipboard --input`);
+        await execAsync(`printf '%s' '${escaped}' | xsel --clipboard --input`);
       }
     } else if (platform === "win32") {
       await execAsync(`echo ${JSON.stringify(text2)} | clip`);
@@ -1538,6 +1540,13 @@ async function copyToClipboard(text2) {
   } catch (error) {
     throw new Error(`Could not copy to clipboard. Path: ${text2}`);
   }
+}
+function toUserPath(absolutePath) {
+  const home = process.env.HOME;
+  if (home && absolutePath.startsWith(home)) {
+    return "~" + absolutePath.slice(home.length);
+  }
+  return absolutePath;
 }
 function formatRelativeTime2(isoString) {
   const date = new Date(isoString);

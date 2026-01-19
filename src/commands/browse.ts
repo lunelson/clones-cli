@@ -207,8 +207,9 @@ async function showRepoDetails(repo: RepoInfo): Promise<void> {
 
   switch (action) {
     case "copy":
-      await copyToClipboard(repo.localPath);
-      p.log.success(`Copied: ${repo.localPath}`);
+      const userPath = toUserPath(repo.localPath);
+      await copyToClipboard(userPath);
+      p.log.success(`Copied: ${userPath}`);
       break;
 
     case "edit-tags":
@@ -383,17 +384,20 @@ async function runSync(): Promise<void> {
 
 async function copyToClipboard(text: string): Promise<void> {
   const platform = process.platform;
+  // Use printf for reliable output without trailing newline
+  const escaped = text.replace(/'/g, "'\\''"); // Escape single quotes for shell
 
   try {
     if (platform === "darwin") {
-      await execAsync(`echo -n ${JSON.stringify(text)} | pbcopy`);
+      await execAsync(`printf '%s' '${escaped}' | pbcopy`);
     } else if (platform === "linux") {
       try {
-        await execAsync(`echo -n ${JSON.stringify(text)} | xclip -selection clipboard`);
+        await execAsync(`printf '%s' '${escaped}' | xclip -selection clipboard`);
       } catch {
-        await execAsync(`echo -n ${JSON.stringify(text)} | xsel --clipboard --input`);
+        await execAsync(`printf '%s' '${escaped}' | xsel --clipboard --input`);
       }
     } else if (platform === "win32") {
+      // Windows clip adds a newline anyway, but at least avoid the -n issue
       await execAsync(`echo ${JSON.stringify(text)} | clip`);
     } else {
       throw new Error(`Unsupported platform: ${platform}`);
@@ -401,6 +405,14 @@ async function copyToClipboard(text: string): Promise<void> {
   } catch (error) {
     throw new Error(`Could not copy to clipboard. Path: ${text}`);
   }
+}
+
+function toUserPath(absolutePath: string): string {
+  const home = process.env.HOME;
+  if (home && absolutePath.startsWith(home)) {
+    return "~" + absolutePath.slice(home.length);
+  }
+  return absolutePath;
 }
 
 function formatRelativeTime(isoString: string): string {
