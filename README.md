@@ -1,4 +1,4 @@
-# @lunelson/clones-cli
+# clones-cli
 
 A read-only Git repository manager for exploration and reference. Keep a tidy collection of cloned repos you want to study, search, or reference—without the overhead of managing them manually.
 
@@ -15,7 +15,7 @@ When exploring codebases for learning or reference, you often end up with repos 
 ## Install
 
 ```bash
-npm install -g @lunelson/clones-cli
+npm install -g clones-cli
 ```
 
 Requires Node.js 18+.
