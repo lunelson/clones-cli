@@ -142,7 +142,22 @@ vite.config.ts.timestamp-*
 
 # build and config
 dist
-.vscode
 
 # local files
 *.local.*
+
+# vscode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+!.vscode/*.code-snippets
+!*.code-workspace
+
+# Built Visual Studio Code Extensions
+*.vsix
+
+# temp, trash, ai
+_temp
+_ai
