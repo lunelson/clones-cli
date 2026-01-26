@@ -240,6 +240,12 @@ export type Option<Value> = Value extends Primitive
   ? { value: Value; label?: string; hint?: string }
   : { value: Value; label: string; hint?: string };
 
+/**
+ * Type for custom filter functions used with autocompleteMultiselect.
+ * Return true if the option should be shown for the given search text.
+ */
+export type FilterFn<Value> = (searchText: string, option: Option<Value>) => boolean;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Base Prompt Class (simplified for autocomplete use)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -511,7 +517,7 @@ export interface AutocompleteMultiSelectOptions<Value> {
   /**
    * Custom filter function. If not provided, filters by label, hint, and stringified value.
    */
-  filter?: (searchText: string, option: Option<Value>) => boolean;
+  filter?: FilterFn<Value>;
 }
 
 function getLabel<T>(option: Option<T>) {

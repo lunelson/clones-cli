@@ -1,8 +1,5 @@
 import { defineCommand } from "citty";
 import * as p from "@clack/prompts";
-import search from "@inquirer/search";
-import { exec } from "node:child_process";
-import { promisify } from "node:util";
 import { existsSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
@@ -18,13 +15,18 @@ import {
   updateRepoLocalState,
   getLastSyncedAt,
 } from "../lib/local-state.js";
-import { getRepoStatus, cloneRepo, getRemoteUrl } from "../lib/git.js";
+import { getRepoStatus, cloneRepo } from "../lib/git.js";
 import { getRepoPath, getClonesDir, DEFAULTS, ensureClonesDir } from "../lib/config.js";
 import { parseGitUrl, generateRepoId } from "../lib/url-parser.js";
 import { fetchGitHubMetadata } from "../lib/github.js";
-import type { RegistryEntry, RepoStatus, Registry, LocalState } from "../types/index.js";
-
-const execAsync = promisify(exec);
+import {
+  autocompleteMultiselect,
+  isCancel,
+  type Option,
+} from "../lib/autocomplete-multiselect.js";
+import { toUserPath, formatRelativeTime, copyToClipboard } from "../lib/ui-utils.js";
+import { showBatchActions, type RepoInfo } from "../lib/browse/batch-actions.js";
+import type { RegistryEntry, Registry } from "../types/index.js";
 
 // Custom error for clean exit propagation through nested async calls
 class ExitRequestedError extends Error {
@@ -36,12 +38,6 @@ class ExitRequestedError extends Error {
 
 function requestExit(): never {
   throw new ExitRequestedError();
-}
-
-interface RepoInfo {
-  entry: RegistryEntry;
-  status: RepoStatus;
-  localPath: string;
 }
 
 export default defineCommand({
@@ -113,7 +109,7 @@ async function mainMenu(): Promise<void> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// BROWSE REPOS (with search)
+// BROWSE REPOS (with multiselect search)
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function browseRepos(registry: Registry): Promise<void> {
@@ -131,45 +127,54 @@ async function browseRepos(registry: Registry): Promise<void> {
 
   s.stop(`${repos.length} repositories loaded`);
 
-  // Use inquirer search for type-ahead filtering
-  try {
-    const selected = await search<RepoInfo>({
-      message: "Select a repository (type to filter)",
-      source: async (input) => {
-        const term = (input || "").toLowerCase();
-        const filtered = repos.filter((r) => {
-          const name = `${r.entry.owner}/${r.entry.repo}`.toLowerCase();
-          const tags = r.entry.tags?.join(" ").toLowerCase() || "";
-          return name.includes(term) || tags.includes(term);
-        });
-
-        return filtered.map((r) => {
-          const hints: string[] = [];
-          if (r.entry.tags && r.entry.tags.length > 0) {
-            hints.push(r.entry.tags.join(", "));
-          }
-          if (!r.status.exists) {
-            hints.push("missing");
-          } else if (r.status.isDirty) {
-            hints.push("dirty");
-          }
-
-          return {
-            name: `${r.entry.owner}/${r.entry.repo}`,
-            value: r,
-            description: hints.length > 0 ? hints.join(" · ") : undefined,
-          };
-        });
-      },
-    });
-
-    await showRepoDetails(selected);
-  } catch (error) {
-    // User cancelled (Ctrl+C/ESC in inquirer throws) - propagate as exit
-    if ((error as Error).message?.includes("User force closed")) {
-      requestExit();
+  // Build options for autocomplete multiselect
+  const options: Option<RepoInfo>[] = repos.map((r) => {
+    const hints: string[] = [];
+    if (!r.status.exists) {
+      hints.push("missing");
+    } else if (r.status.isDirty) {
+      hints.push("dirty");
     }
-    throw error;
+
+    return {
+      value: r,
+      label: `${r.entry.owner}/${r.entry.repo}`,
+      hint: hints.length > 0 ? hints.join(", ") : undefined,
+    };
+  });
+
+  // Custom filter that searches owner/repo, tags, and description
+  const repoInfoFilter = (searchText: string, option: Option<RepoInfo>): boolean => {
+    if (!searchText) return true;
+    const term = searchText.toLowerCase();
+    const entry = option.value.entry;
+    const label = `${entry.owner}/${entry.repo}`.toLowerCase();
+    const tags = entry.tags?.join(" ").toLowerCase() ?? "";
+    const desc = entry.description?.toLowerCase() ?? "";
+    return label.includes(term) || tags.includes(term) || desc.includes(term);
+  };
+
+  const selected = await autocompleteMultiselect({
+    message: "Select repositories (type to filter, Tab to select)",
+    options,
+    placeholder: "Type to search...",
+    filter: repoInfoFilter,
+  });
+
+  if (isCancel(selected)) {
+    requestExit();
+  }
+
+  if (selected.length === 0) {
+    p.log.info("No repositories selected.");
+    return;
+  }
+
+  // Branch based on selection count
+  if (selected.length === 1) {
+    await showRepoDetails(selected[0]);
+  } else {
+    await showBatchActions(selected);
   }
 }
 
@@ -434,59 +439,3 @@ async function runSync(): Promise<void> {
   await syncCommand.run?.({ args: {} } as any);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// UTILITIES
-// ─────────────────────────────────────────────────────────────────────────────
-
-async function copyToClipboard(text: string): Promise<void> {
-  const platform = process.platform;
-  // Use printf for reliable output without trailing newline
-  const escaped = text.replace(/'/g, "'\\''"); // Escape single quotes for shell
-
-  try {
-    if (platform === "darwin") {
-      await execAsync(`printf '%s' '${escaped}' | pbcopy`);
-    } else if (platform === "linux") {
-      try {
-        await execAsync(`printf '%s' '${escaped}' | xclip -selection clipboard`);
-      } catch {
-        await execAsync(`printf '%s' '${escaped}' | xsel --clipboard --input`);
-      }
-    } else if (platform === "win32") {
-      // Windows clip adds a newline anyway, but at least avoid the -n issue
-      await execAsync(`echo ${JSON.stringify(text)} | clip`);
-    } else {
-      throw new Error(`Unsupported platform: ${platform}`);
-    }
-  } catch (error) {
-    throw new Error(`Could not copy to clipboard. Path: ${text}`);
-  }
-}
-
-function toUserPath(absolutePath: string): string {
-  const home = process.env.HOME;
-  if (home && absolutePath.startsWith(home)) {
-    return "~" + absolutePath.slice(home.length);
-  }
-  return absolutePath;
-}
-
-function formatRelativeTime(isoString: string): string {
-  const date = new Date(isoString);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMins / 60);
-  const diffDays = Math.floor(diffHours / 24);
-
-  if (diffMins < 1) return "just now";
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  if (diffDays < 30) return `${diffDays}d ago`;
-
-  return date.toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-}
