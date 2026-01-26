@@ -12,6 +12,12 @@ import {
   findEntry,
 } from "../lib/registry.js";
 import {
+  readLocalState,
+  writeLocalState,
+  updateRepoLocalState,
+  updateLastSyncRun,
+} from "../lib/local-state.js";
+import {
   fetchWithPrune,
   resetHard,
   pullFastForward,
@@ -26,7 +32,7 @@ import { getRepoPath, getClonesDir, DEFAULTS } from "../lib/config.js";
 import { scanClonesDir, isNestedRepo } from "../lib/scan.js";
 import { parseGitUrl, generateRepoId } from "../lib/url-parser.js";
 import { fetchGitHubMetadata } from "../lib/github.js";
-import type { RegistryEntry, UpdateResult, Registry } from "../types/index.js";
+import type { RegistryEntry, UpdateResult, Registry, LocalState } from "../types/index.js";
 
 interface UpdateSummary {
   name: string;
@@ -68,6 +74,7 @@ export default defineCommand({
     }
 
     let registry = await readRegistry();
+    let localState = await readLocalState();
     const summaries: UpdateSummary[] = [];
 
     // ═══════════════════════════════════════════════════════════════════
@@ -154,9 +161,9 @@ export default defineCommand({
             detail: result.commits ? `${result.commits} commits` : undefined,
           });
 
-          // Update lastSyncedAt
+          // Update lastSyncedAt in local state
           if (!dryRun) {
-            registry = updateEntry(registry, entry.id, {
+            localState = updateRepoLocalState(localState, entry.id, {
               lastSyncedAt: new Date().toISOString(),
             });
           }
@@ -228,6 +235,9 @@ export default defineCommand({
     // ═══════════════════════════════════════════════════════════════════
     if (!dryRun) {
       await writeRegistry(registry);
+      // Update lastSyncRun and save local state
+      localState = updateLastSyncRun(localState);
+      await writeLocalState(localState);
     }
 
     console.log();

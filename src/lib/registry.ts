@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
 import type { Registry, RegistryEntry } from "../types/index.js";
-import { getRegistryPath, ensureClonesDir } from "./config.js";
+import { getRegistryPath, ensureConfigDir } from "./config.js";
 
 /**
  * Create an empty registry
@@ -11,7 +11,6 @@ import { getRegistryPath, ensureClonesDir } from "./config.js";
 export function createEmptyRegistry(): Registry {
   return {
     version: "1.0.0",
-    lastUpdated: new Date().toISOString(),
     repos: [],
   };
 }
@@ -50,13 +49,10 @@ export async function readRegistry(): Promise<Registry> {
  * Uses write-to-temp + rename pattern to prevent corruption
  */
 export async function writeRegistry(registry: Registry): Promise<void> {
-  await ensureClonesDir();
+  await ensureConfigDir();
 
   const path = getRegistryPath();
   const tempPath = join(dirname(path), `.registry.${randomUUID()}.tmp`);
-
-  // Update timestamp
-  registry.lastUpdated = new Date().toISOString();
 
   // Write to temp file
   const content = JSON.stringify(registry, null, 2);

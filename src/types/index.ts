@@ -1,11 +1,10 @@
 /**
  * Registry schema for clones-cli
- * Matches the PRD specification for registry.json
+ * This file is shared across machines (synced via yadm or similar)
  */
 
 export interface Registry {
   version: "1.0.0";
-  lastUpdated: string; // ISO 8601 timestamp
   repos: RegistryEntry[];
 }
 
@@ -30,10 +29,27 @@ export interface RegistryEntry {
   // Tracking
   addedAt: string; // ISO 8601
   addedBy: string; // "manual" | "auto-discovered" | hostname
-  lastSyncedAt?: string; // ISO 8601
 
   // State
   managed: boolean; // If false, desired but not yet cloned
+}
+
+/**
+ * Local state schema for clones-cli
+ * This file is machine-specific (NOT synced across machines)
+ * Contains timestamps and other machine-local state
+ */
+
+export interface LocalState {
+  version: "1.0.0";
+  lastSyncRun?: string; // ISO 8601 - when sync was last run on this machine
+  repos: {
+    [repoId: string]: RepoLocalState;
+  };
+}
+
+export interface RepoLocalState {
+  lastSyncedAt?: string; // ISO 8601 - when this repo was last synced on this machine
 }
 
 /**

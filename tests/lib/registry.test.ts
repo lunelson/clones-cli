@@ -35,7 +35,6 @@ describe("createEmptyRegistry", () => {
 
     expect(registry.version).toBe("1.0.0");
     expect(registry.repos).toEqual([]);
-    expect(registry.lastUpdated).toBeDefined();
   });
 });
 
@@ -44,7 +43,6 @@ describe("findEntry", () => {
     const entry = createTestEntry();
     const registry: Registry = {
       version: "1.0.0",
-      lastUpdated: "",
       repos: [entry],
     };
 
@@ -67,7 +65,6 @@ describe("findEntryByOwnerRepo", () => {
     const entry = createTestEntry();
     const registry: Registry = {
       version: "1.0.0",
-      lastUpdated: "",
       repos: [entry],
     };
 
@@ -100,7 +97,6 @@ describe("addEntry", () => {
     const entry = createTestEntry();
     const registry: Registry = {
       version: "1.0.0",
-      lastUpdated: "",
       repos: [entry],
     };
 
@@ -125,7 +121,6 @@ describe("updateEntry", () => {
     const entry = createTestEntry();
     const registry: Registry = {
       version: "1.0.0",
-      lastUpdated: "",
       repos: [entry],
     };
 
@@ -150,7 +145,6 @@ describe("updateEntry", () => {
     const entry = createTestEntry({ description: "original" });
     const registry: Registry = {
       version: "1.0.0",
-      lastUpdated: "",
       repos: [entry],
     };
 
@@ -168,7 +162,6 @@ describe("removeEntry", () => {
     const entry = createTestEntry();
     const registry: Registry = {
       version: "1.0.0",
-      lastUpdated: "",
       repos: [entry],
     };
 
@@ -192,7 +185,6 @@ describe("filterByTags", () => {
   beforeEach(() => {
     registry = {
       version: "1.0.0",
-      lastUpdated: "",
       repos: [
         createTestEntry({
           id: "github.com:a/repo1",
@@ -255,7 +247,6 @@ describe("filterByPattern", () => {
   beforeEach(() => {
     registry = {
       version: "1.0.0",
-      lastUpdated: "",
       repos: [
         createTestEntry({
           id: "github.com:owner1/repo-a",

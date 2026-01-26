@@ -5,6 +5,11 @@ import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { parseGitUrl, generateRepoId } from "../lib/url-parser.js";
 import { readRegistry, writeRegistry, addEntry, findEntry } from "../lib/registry.js";
+import {
+  readLocalState,
+  writeLocalState,
+  updateRepoLocalState,
+} from "../lib/local-state.js";
 import { cloneRepo, getRepoStatus } from "../lib/git.js";
 import { getRepoPath, getClonesDir, DEFAULTS, ensureClonesDir } from "../lib/config.js";
 import { fetchGitHubMetadata } from "../lib/github.js";
@@ -171,13 +176,19 @@ export default defineCommand({
         lfs,
         addedAt: new Date().toISOString(),
         addedBy: "manual",
-        lastSyncedAt: new Date().toISOString(),
         managed: true,
       };
 
       // Add to registry
       const updatedRegistry = addEntry(registry, entry);
       await writeRegistry(updatedRegistry);
+
+      // Update local state with initial lastSyncedAt
+      let localState = await readLocalState();
+      localState = updateRepoLocalState(localState, repoId, {
+        lastSyncedAt: new Date().toISOString(),
+      });
+      await writeLocalState(localState);
 
       p.log.success(`Added ${parsed.owner}/${parsed.repo} to registry`);
 

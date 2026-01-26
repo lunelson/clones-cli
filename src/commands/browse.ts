@@ -12,11 +12,17 @@ import {
   updateEntry,
   addEntry,
 } from "../lib/registry.js";
+import {
+  readLocalState,
+  writeLocalState,
+  updateRepoLocalState,
+  getLastSyncedAt,
+} from "../lib/local-state.js";
 import { getRepoStatus, cloneRepo, getRemoteUrl } from "../lib/git.js";
 import { getRepoPath, getClonesDir, DEFAULTS, ensureClonesDir } from "../lib/config.js";
 import { parseGitUrl, generateRepoId } from "../lib/url-parser.js";
 import { fetchGitHubMetadata } from "../lib/github.js";
-import type { RegistryEntry, RepoStatus, Registry } from "../types/index.js";
+import type { RegistryEntry, RepoStatus, Registry, LocalState } from "../types/index.js";
 
 const execAsync = promisify(exec);
 
@@ -204,8 +210,11 @@ async function showRepoDetails(repo: RepoInfo): Promise<void> {
     console.log(`  Status: ✓ Clean`);
   }
 
-  if (repo.entry.lastSyncedAt) {
-    console.log(`  Synced: ${formatRelativeTime(repo.entry.lastSyncedAt)}`);
+  // Get lastSyncedAt from local state
+  const localState = await readLocalState();
+  const lastSyncedAt = getLastSyncedAt(localState, repo.entry.id);
+  if (lastSyncedAt) {
+    console.log(`  Synced: ${formatRelativeTime(lastSyncedAt)}`);
   }
 
   console.log();
@@ -396,12 +405,18 @@ async function addNewClone(): Promise<void> {
     lfs: DEFAULTS.lfs,
     addedAt: new Date().toISOString(),
     addedBy: "manual",
-    lastSyncedAt: new Date().toISOString(),
     managed: true,
   };
 
   const updatedRegistry = addEntry(registry, entry);
   await writeRegistry(updatedRegistry);
+
+  // Update local state with initial lastSyncedAt
+  let localState = await readLocalState();
+  localState = updateRepoLocalState(localState, repoId, {
+    lastSyncedAt: new Date().toISOString(),
+  });
+  await writeLocalState(localState);
 
   p.log.success(`Added ${parsed.owner}/${parsed.repo} to registry`);
 }

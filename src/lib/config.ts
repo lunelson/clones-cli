@@ -10,10 +10,29 @@ export function getClonesDir(): string {
 }
 
 /**
- * Get the path to registry.json
+ * Get the config directory (for registry.json and local.json)
+ * Uses XDG_CONFIG_HOME if set, otherwise ~/.config/clones
+ */
+export function getConfigDir(): string {
+  const xdgConfig = process.env.XDG_CONFIG_HOME;
+  if (xdgConfig) {
+    return join(xdgConfig, "clones");
+  }
+  return join(homedir(), ".config", "clones");
+}
+
+/**
+ * Get the path to registry.json (shared across machines)
  */
 export function getRegistryPath(): string {
-  return join(getClonesDir(), "registry.json");
+  return join(getConfigDir(), "registry.json");
+}
+
+/**
+ * Get the path to local.json (machine-specific state)
+ */
+export function getLocalStatePath(): string {
+  return join(getConfigDir(), "local.json");
 }
 
 /**
@@ -28,6 +47,14 @@ export function getRepoPath(owner: string, repo: string): string {
  */
 export async function ensureClonesDir(): Promise<void> {
   const dir = getClonesDir();
+  await mkdir(dir, { recursive: true });
+}
+
+/**
+ * Ensure the config directory exists
+ */
+export async function ensureConfigDir(): Promise<void> {
+  const dir = getConfigDir();
   await mkdir(dir, { recursive: true });
 }
 
