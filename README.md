@@ -95,6 +95,14 @@ clones sync --refresh        # Re-fetch metadata from GitHub
 - `hard-reset` (default): Reset to upstream, discarding local changes
 - `ff-only`: Fast-forward only, fail if diverged
 
+### `clones doctor`
+
+Normalize and validate config files (`registry.json` and `local.json`), dropping unknown fields and repairing invalid values.
+
+```bash
+clones doctor
+```
+
 ### `clones rm <repo>`
 
 Remove a repository from the registry.
@@ -114,7 +122,14 @@ clones rm owner/repo --yes     # Skip confirmation
 │   └── repo2/
 ├── owner2/
 │   └── repo3/
-└── .clones-registry.json
+```
+
+Config files live in `~/.config/clones/`:
+
+```
+~/.config/clones/
+├── registry.json   # Shared registry (sync to dotfiles)
+└── local.json      # Machine-local state
 ```
 
 The registry tracks:
@@ -122,6 +137,9 @@ The registry tracks:
 - Description and tags
 - Update strategy and sync timestamps
 - Submodule and LFS preferences
+
+Local state tracks:
+- Last sync run and per-repo last synced timestamps (machine-only)
 
 ## Clone Behavior
 

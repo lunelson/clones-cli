@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
 import type { Registry, RegistryEntry } from "../types/index.js";
 import { getRegistryPath, ensureConfigDir } from "./config.js";
+import { normalizeRegistry } from "./schema.js";
 
 /**
  * Create an empty registry
@@ -30,12 +31,8 @@ export async function readRegistry(): Promise<Registry> {
     const content = await readFile(path, "utf-8");
     const data = JSON.parse(content) as Registry;
 
-    // Validate basic structure
-    if (!data.version || !Array.isArray(data.repos)) {
-      throw new Error("Invalid registry format");
-    }
-
-    return data;
+    const normalized = normalizeRegistry(data);
+    return normalized.data;
   } catch (error) {
     if (error instanceof SyntaxError) {
       throw new Error(`Registry file is corrupted: ${path}`);
@@ -51,11 +48,12 @@ export async function readRegistry(): Promise<Registry> {
 export async function writeRegistry(registry: Registry): Promise<void> {
   await ensureConfigDir();
 
+  const normalized = normalizeRegistry(registry);
   const path = getRegistryPath();
   const tempPath = join(dirname(path), `.registry.${randomUUID()}.tmp`);
 
   // Write to temp file
-  const content = JSON.stringify(registry, null, 2);
+  const content = JSON.stringify(normalized.data, null, 2);
   await writeFile(tempPath, content, "utf-8");
 
   // Atomic rename

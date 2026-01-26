@@ -10,6 +10,7 @@ const main = defineCommand({
   subCommands: {
     add: () => import("./commands/add.js").then((m) => m.default),
     collect: () => import("./commands/collect.js").then((m) => m.default),
+    doctor: () => import("./commands/doctor.js").then((m) => m.default),
     list: () => import("./commands/list.js").then((m) => m.default),
     rm: () => import("./commands/rm.js").then((m) => m.default),
     sync: () => import("./commands/sync.js").then((m) => m.default),

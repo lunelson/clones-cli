@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
 import type { LocalState, RepoLocalState } from "../types/index.js";
 import { getLocalStatePath, ensureConfigDir } from "./config.js";
+import { normalizeLocalState } from "./schema.js";
 
 /**
  * Create an empty local state
@@ -29,13 +30,8 @@ export async function readLocalState(): Promise<LocalState> {
   try {
     const content = await readFile(path, "utf-8");
     const data = JSON.parse(content) as LocalState;
-
-    // Validate basic structure
-    if (!data.version || typeof data.repos !== "object") {
-      throw new Error("Invalid local state format");
-    }
-
-    return data;
+    const normalized = normalizeLocalState(data);
+    return normalized.data;
   } catch (error) {
     if (error instanceof SyntaxError) {
       throw new Error(`Local state file is corrupted: ${path}`);
@@ -51,11 +47,12 @@ export async function readLocalState(): Promise<LocalState> {
 export async function writeLocalState(state: LocalState): Promise<void> {
   await ensureConfigDir();
 
+  const normalized = normalizeLocalState(state);
   const path = getLocalStatePath();
   const tempPath = join(dirname(path), `.local.${randomUUID()}.tmp`);
 
   // Write to temp file
-  const content = JSON.stringify(state, null, 2);
+  const content = JSON.stringify(normalized.data, null, 2);
   await writeFile(tempPath, content, "utf-8");
 
   // Atomic rename
@@ -128,4 +125,3 @@ export function getLastSyncedAt(
 ): string | undefined {
   return state.repos[repoId]?.lastSyncedAt;
 }
-
