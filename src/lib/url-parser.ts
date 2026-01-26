@@ -1,18 +1,34 @@
 import type { ParsedGitUrl } from "../types/index.js";
 
 /**
- * Normalize a Git URL by stripping GitHub/GitLab web UI paths
+ * Normalize a Git URL by stripping extra path segments, queries, and hashes
  *
  * Converts URLs like:
  * - https://github.com/owner/repo/tree/main → https://github.com/owner/repo
  * - https://github.com/owner/repo/blob/main/file.ts → https://github.com/owner/repo
  */
 export function normalizeGitUrl(url: string): string {
-  // Strip GitHub/GitLab web UI paths (tree, blob, commit, pull, issues, etc.)
-  return url.replace(
-    /\/(tree|blob|commit|pull|issues|releases|tags|actions|wiki|discussions|security|pulse|graphs|network|settings)(\/.*)?$/,
-    ""
-  );
+  const trimmed = url.trim();
+
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+    try {
+      const parsed = new URL(trimmed);
+      const segments = parsed.pathname.split("/").filter(Boolean);
+
+      if (segments.length < 2) {
+        return trimmed;
+      }
+
+      const owner = segments[0];
+      const repo = segments[1];
+
+      return `${parsed.protocol}//${parsed.host}/${owner}/${repo}`;
+    } catch {
+      return trimmed;
+    }
+  }
+
+  return trimmed;
 }
 
 /**
@@ -25,33 +41,59 @@ export function normalizeGitUrl(url: string): string {
  * - GitHub web UI URLs (normalized automatically)
  */
 export function parseGitUrl(url: string): ParsedGitUrl {
-  // Normalize: trim whitespace and strip web UI paths
-  url = normalizeGitUrl(url.trim());
+  const trimmed = url.trim();
 
   // SSH format: git@host:owner/repo.git
-  const sshMatch = url.match(/^git@([^:]+):([^/]+)\/(.+?)(?:\.git)?$/);
+  const sshMatch = trimmed.match(/^git@([^:]+):(.+)$/);
   if (sshMatch) {
-    const [, host, owner, repo] = sshMatch;
+    const [, host, rawPath] = sshMatch;
+    const path = rawPath.split(/[?#]/)[0];
+    const segments = path.split("/").filter(Boolean);
+
+    if (segments.length < 2) {
+      throw new Error("Invalid Git URL format");
+    }
+
+    const owner = segments[0];
+    const repoSegment = segments[1];
+    const repo = repoSegment.endsWith(".git")
+      ? repoSegment.slice(0, -4)
+      : repoSegment;
+
     return {
       host,
       owner,
       repo,
-      cloneUrl: url.endsWith(".git") ? url : `${url}.git`,
+      cloneUrl: `git@${host}:${owner}/${repo}.git`,
     };
   }
 
   // HTTPS format: https://host/owner/repo.git
-  const httpsMatch = url.match(
-    /^https?:\/\/([^/]+)\/([^/]+)\/(.+?)(?:\.git)?$/
-  );
-  if (httpsMatch) {
-    const [, host, owner, repo] = httpsMatch;
-    return {
-      host,
-      owner,
-      repo,
-      cloneUrl: url.endsWith(".git") ? url : `${url}.git`,
-    };
+  const normalized = normalizeGitUrl(trimmed);
+  if (normalized.startsWith("http://") || normalized.startsWith("https://")) {
+    try {
+      const parsed = new URL(normalized);
+      const segments = parsed.pathname.split("/").filter(Boolean);
+
+      if (segments.length < 2) {
+        throw new Error("Invalid Git URL format");
+      }
+
+      const owner = segments[0];
+      const repoSegment = segments[1];
+      const repo = repoSegment.endsWith(".git")
+        ? repoSegment.slice(0, -4)
+        : repoSegment;
+
+      return {
+        host: parsed.host,
+        owner,
+        repo,
+        cloneUrl: `${parsed.protocol}//${parsed.host}/${owner}/${repo}.git`,
+      };
+    } catch {
+      // Fall through to error below
+    }
   }
 
   throw new Error(

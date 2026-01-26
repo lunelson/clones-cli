@@ -3,6 +3,7 @@ import * as p from "@clack/prompts";
 import { rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { readRegistry, writeRegistry, removeEntry, findEntryByOwnerRepo } from "../lib/registry.js";
+import { readLocalState, writeLocalState, removeRepoLocalState } from "../lib/local-state.js";
 import { getRepoPath } from "../lib/config.js";
 
 export default defineCommand({
@@ -114,6 +115,15 @@ export default defineCommand({
       const updatedRegistry = removeEntry(registry, entry.id);
       await writeRegistry(updatedRegistry);
       p.log.success(`Removed ${owner}/${repo} from registry`);
+      try {
+        const localState = await readLocalState();
+        const updatedLocalState = removeRepoLocalState(localState, entry.id);
+        await writeLocalState(updatedLocalState);
+      } catch (error) {
+        p.log.warn(
+          `Local state was not updated: ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
     } catch (error) {
       p.log.error(error instanceof Error ? error.message : String(error));
       process.exit(1);

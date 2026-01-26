@@ -3,12 +3,14 @@ import * as p from "@clack/prompts";
 import { readRegistry, filterByTags, filterByPattern } from "../lib/registry.js";
 import { getRepoStatus } from "../lib/git.js";
 import { getRepoPath, getClonesDir } from "../lib/config.js";
+import { readLocalState, getLastSyncedAt } from "../lib/local-state.js";
 import type { RegistryEntry, RepoStatus } from "../types/index.js";
 
 interface ListItem {
   entry: RegistryEntry;
   status: RepoStatus;
   localPath: string;
+  lastSyncedAt?: string;
 }
 
 export default defineCommand({
@@ -32,6 +34,7 @@ export default defineCommand({
   },
   async run({ args }) {
     const registry = await readRegistry();
+    const localState = await readLocalState();
 
     if (registry.repos.length === 0) {
       if (args.json) {
@@ -73,14 +76,15 @@ export default defineCommand({
       repos.map(async (entry) => {
         const localPath = getRepoPath(entry.owner, entry.repo);
         const status = await getRepoStatus(localPath);
-        return { entry, status, localPath };
+        const lastSyncedAt = getLastSyncedAt(localState, entry.id);
+        return { entry, status, localPath, lastSyncedAt };
       })
     );
 
     if (args.json) {
       outputJson(items);
     } else {
-      outputPretty(items, registry.lastUpdated);
+      outputPretty(items, localState.lastSyncRun);
     }
   },
 });
@@ -88,7 +92,7 @@ export default defineCommand({
 function outputJson(items: ListItem[]): void {
   const output = {
     version: "1.0.0",
-    repos: items.map(({ entry, status, localPath }) => ({
+    repos: items.map(({ entry, status, localPath, lastSyncedAt }) => ({
       id: entry.id,
       owner: entry.owner,
       repo: entry.repo,
@@ -103,7 +107,7 @@ function outputJson(items: ListItem[]): void {
       hasUpstream: !!status.tracking,
       exists: status.exists,
       isGitRepo: status.isGitRepo,
-      lastSyncedAt: entry.lastSyncedAt,
+      lastSyncedAt,
       tags: entry.tags,
       description: entry.description,
     })),
@@ -112,17 +116,18 @@ function outputJson(items: ListItem[]): void {
   console.log(JSON.stringify(output, null, 2));
 }
 
-function outputPretty(items: ListItem[], lastUpdated: string): void {
+function outputPretty(items: ListItem[], lastSyncRun?: string): void {
   const clonesDir = getClonesDir();
   const shortDir = clonesDir.replace(process.env.HOME || "", "~");
+  const lastSyncLabel = lastSyncRun ? formatDate(lastSyncRun) : "never";
 
   console.log();
   console.log(
-    `Clones Registry (${items.length} repos, last updated ${formatDate(lastUpdated)})`
+    `Clones Registry (${items.length} repos, last sync ${lastSyncLabel})`
   );
   console.log();
 
-  for (const { entry, status, localPath } of items) {
+  for (const { entry, status, localPath, lastSyncedAt } of items) {
     const shortPath = localPath.replace(process.env.HOME || "", "~");
 
     console.log(`${entry.owner}/${entry.repo}`);
@@ -149,7 +154,7 @@ function outputPretty(items: ListItem[], lastUpdated: string): void {
       console.log(`  Branch: ${status.currentBranch} (no upstream)`);
       console.log(`  Status: \u26A0 No upstream tracking`);
     } else {
-      const syncStatus = getSyncStatus(status, entry.lastSyncedAt);
+      const syncStatus = getSyncStatus(status, lastSyncedAt);
       console.log(`  Branch: ${status.currentBranch} \u2192 ${status.tracking}`);
       console.log(`  Status: ${syncStatus}`);
     }

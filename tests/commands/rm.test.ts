@@ -1,0 +1,83 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+
+const readRegistry = vi.fn();
+const writeRegistry = vi.fn();
+const removeEntry = vi.fn();
+const findEntryByOwnerRepo = vi.fn();
+const readLocalState = vi.fn();
+const writeLocalState = vi.fn();
+const removeRepoLocalState = vi.fn();
+const getRepoPath = vi.fn(() => "/tmp/owner/repo");
+
+vi.mock("@clack/prompts", () => ({
+  intro: vi.fn(),
+  outro: vi.fn(),
+  confirm: vi.fn(),
+  isCancel: vi.fn(),
+  spinner: () => ({ start: vi.fn(), stop: vi.fn() }),
+  log: {
+    info: vi.fn(),
+    error: vi.fn(),
+    warn: vi.fn(),
+    success: vi.fn(),
+    message: vi.fn(),
+    step: vi.fn(),
+  },
+}));
+
+vi.mock("../../src/lib/registry.js", () => ({
+  readRegistry,
+  writeRegistry,
+  removeEntry,
+  findEntryByOwnerRepo,
+}));
+
+vi.mock("../../src/lib/local-state.js", () => ({
+  readLocalState,
+  writeLocalState,
+  removeRepoLocalState,
+}));
+
+vi.mock("../../src/lib/config.js", () => ({
+  getRepoPath,
+}));
+
+vi.mock("node:fs", () => ({
+  existsSync: vi.fn(() => false),
+}));
+
+const { default: rmCommand } = await import("../../src/commands/rm.js");
+
+describe("clones rm", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("removes repo from local state when deleting from registry", async () => {
+    const entry = {
+      id: "github.com:owner/repo",
+      owner: "owner",
+      repo: "repo",
+    };
+
+    readRegistry.mockResolvedValue({ version: "1.0.0", repos: [entry] });
+    findEntryByOwnerRepo.mockReturnValue(entry);
+    removeEntry.mockReturnValue({ version: "1.0.0", repos: [] });
+    readLocalState.mockResolvedValue({
+      version: "1.0.0",
+      repos: { [entry.id]: { lastSyncedAt: "2026-01-01T00:00:00Z" } },
+    });
+    removeRepoLocalState.mockReturnValue({ version: "1.0.0", repos: {} });
+
+    await rmCommand.run?.({
+      args: { repo: "owner/repo", "keep-disk": true, yes: true },
+    } as any);
+
+    expect(writeRegistry).toHaveBeenCalledTimes(1);
+    expect(writeLocalState).toHaveBeenCalledTimes(1);
+  });
+});

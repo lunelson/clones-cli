@@ -175,7 +175,6 @@ export default defineCommand({
         submodules,
         lfs,
         addedAt: new Date().toISOString(),
-        addedBy: "manual",
         managed: true,
       };
 

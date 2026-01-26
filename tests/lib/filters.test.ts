@@ -16,7 +16,6 @@ function mockEntry(overrides: Partial<RegistryEntry> = {}): RegistryEntry {
     submodules: "none",
     lfs: "auto",
     addedAt: new Date().toISOString(),
-    addedBy: "manual",
     managed: true,
     ...overrides,
   };

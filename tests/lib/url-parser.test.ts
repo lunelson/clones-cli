@@ -122,6 +122,43 @@ describe("parseGitUrl", () => {
         "Invalid Git URL format"
       );
     });
+
+    it("handles URLs with query params and hash anchors", () => {
+      const result = parseGitUrl(
+        "https://github.com/owner/repo?utm_source=test#readme"
+      );
+
+      expect(result).toEqual({
+        host: "github.com",
+        owner: "owner",
+        repo: "repo",
+        cloneUrl: "https://github.com/owner/repo.git",
+      });
+    });
+
+    it("handles URLs with extra path segments", () => {
+      const result = parseGitUrl(
+        "https://github.com/owner/repo/tree/main/src/lib"
+      );
+
+      expect(result).toEqual({
+        host: "github.com",
+        owner: "owner",
+        repo: "repo",
+        cloneUrl: "https://github.com/owner/repo.git",
+      });
+    });
+
+    it("handles SSH URLs with extra path segments", () => {
+      const result = parseGitUrl("git@github.com:owner/repo/tree/main");
+
+      expect(result).toEqual({
+        host: "github.com",
+        owner: "owner",
+        repo: "repo",
+        cloneUrl: "git@github.com:owner/repo.git",
+      });
+    });
   });
 });
 
@@ -218,6 +255,18 @@ describe("normalizeGitUrl", () => {
     expect(normalizeGitUrl("https://github.com/owner/repo.git")).toBe(
       "https://github.com/owner/repo.git"
     );
+  });
+
+  it("strips query params and hashes", () => {
+    expect(
+      normalizeGitUrl("https://github.com/owner/repo?foo=bar#readme")
+    ).toBe("https://github.com/owner/repo");
+  });
+
+  it("keeps .git when extra segments exist", () => {
+    expect(
+      normalizeGitUrl("https://github.com/owner/repo.git/tree/main")
+    ).toBe("https://github.com/owner/repo.git");
   });
 });
 

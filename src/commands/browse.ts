@@ -409,7 +409,6 @@ async function addNewClone(): Promise<void> {
     submodules: DEFAULTS.submodules,
     lfs: DEFAULTS.lfs,
     addedAt: new Date().toISOString(),
-    addedBy: "manual",
     managed: true,
   };
 
@@ -438,4 +437,3 @@ async function runSync(): Promise<void> {
   const { default: syncCommand } = await import("./sync.js");
   await syncCommand.run?.({ args: {} } as any);
 }
-

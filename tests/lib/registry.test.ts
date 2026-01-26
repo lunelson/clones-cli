@@ -23,7 +23,6 @@ function createTestEntry(overrides: Partial<RegistryEntry> = {}): RegistryEntry 
     submodules: "none",
     lfs: "auto",
     addedAt: "2024-01-01T00:00:00Z",
-    addedBy: "manual",
     managed: true,
     ...overrides,
   };

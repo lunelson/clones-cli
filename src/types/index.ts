@@ -28,7 +28,6 @@ export interface RegistryEntry {
 
   // Tracking
   addedAt: string; // ISO 8601
-  addedBy: string; // "manual" | "auto-discovered" | hostname
 
   // State
   managed: boolean; // If false, desired but not yet cloned
