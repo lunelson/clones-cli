@@ -141,6 +141,18 @@ The registry tracks:
 Local state tracks:
 - Last sync run and per-repo last synced timestamps (machine-only)
 
+## Configuration
+
+You can customize paths via environment variables:
+
+```bash
+export CLONES_CONTENT_DIR="$HOME/Clones"      # default
+export CLONES_CONFIG_DIR="$HOME/.config/clones"
+```
+
+`CLONES_CONFIG_DIR` overrides `XDG_CONFIG_HOME` for config location. `CLONES_CONTENT_DIR` is the root directory where repositories are cloned.
+`CLONES_DIR` is deprecated but still supported as a fallback for `CLONES_CONTENT_DIR`.
+
 ## Clone Behavior
 
 By default, clones are:

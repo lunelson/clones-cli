@@ -6,19 +6,26 @@ import { mkdir } from "node:fs/promises";
  * Get the clones directory from environment or default to ~/Clones
  */
 export function getClonesDir(): string {
-  return process.env.CLONES_DIR || join(homedir(), "Clones");
+  return (
+    process.env.CLONES_CONTENT_DIR ||
+    process.env.CLONES_DIR ||
+    join(homedir(), "Clones")
+  );
 }
 
 /**
  * Get the config directory (for registry.json and local.json)
- * Uses XDG_CONFIG_HOME if set, otherwise ~/.config/clones
+ * Uses CLONES_CONFIG_DIR if set, otherwise XDG_CONFIG_HOME/clones, otherwise ~/.config/clones
  */
 export function getConfigDir(): string {
-  const xdgConfig = process.env.XDG_CONFIG_HOME;
-  if (xdgConfig) {
-    return join(xdgConfig, "clones");
+  if (process.env.CLONES_CONFIG_DIR) {
+    return process.env.CLONES_CONFIG_DIR;
   }
-  return join(homedir(), ".config", "clones");
+
+  const xdgConfig = process.env.XDG_CONFIG_HOME;
+  return xdgConfig
+    ? join(xdgConfig, "clones")
+    : join(homedir(), ".config", "clones");
 }
 
 /**
