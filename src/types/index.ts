@@ -27,8 +27,6 @@ export interface RegistryEntry {
   lfs: "auto" | "always" | "never";
 
   // Tracking
-  addedAt: string; // ISO 8601
-
   // State
   managed: boolean; // If false, desired but not yet cloned
 }

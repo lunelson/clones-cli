@@ -408,7 +408,6 @@ async function addNewClone(): Promise<void> {
     updateStrategy: DEFAULTS.updateStrategy,
     submodules: DEFAULTS.submodules,
     lfs: DEFAULTS.lfs,
-    addedAt: new Date().toISOString(),
     managed: true,
   };
 

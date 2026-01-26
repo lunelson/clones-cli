@@ -15,7 +15,6 @@ function mockEntry(overrides: Partial<RegistryEntry> = {}): RegistryEntry {
     updateStrategy: "ff-only",
     submodules: "none",
     lfs: "auto",
-    addedAt: new Date().toISOString(),
     managed: true,
     ...overrides,
   };

@@ -17,7 +17,6 @@ describe("normalizeRegistry", () => {
           updateStrategy: "weird",
           submodules: "none",
           lfs: "auto",
-          addedAt: "2026-01-01T00:00:00Z",
           managed: "yes",
           addedBy: "manual",
           tags: ["ok", 42],

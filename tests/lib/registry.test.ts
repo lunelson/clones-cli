@@ -22,7 +22,6 @@ function createTestEntry(overrides: Partial<RegistryEntry> = {}): RegistryEntry 
     updateStrategy: "hard-reset",
     submodules: "none",
     lfs: "auto",
-    addedAt: "2024-01-01T00:00:00Z",
     managed: true,
     ...overrides,
   };

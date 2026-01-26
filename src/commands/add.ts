@@ -174,7 +174,6 @@ export default defineCommand({
         updateStrategy,
         submodules,
         lfs,
-        addedAt: new Date().toISOString(),
         managed: true,
       };
 

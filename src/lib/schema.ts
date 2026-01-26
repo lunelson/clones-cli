@@ -19,7 +19,6 @@ const REGISTRY_ENTRY_KEYS = new Set([
   "updateStrategy",
   "submodules",
   "lfs",
-  "addedAt",
   "managed",
 ]);
 
@@ -55,8 +54,6 @@ function normalizeRegistryEntry(
   const owner = requireString(raw.owner, "owner");
   const repo = requireString(raw.repo, "repo");
   const cloneUrl = requireString(raw.cloneUrl, "cloneUrl");
-  const addedAt = requireString(raw.addedAt, "addedAt");
-
   let defaultRemoteName =
     typeof raw.defaultRemoteName === "string" && raw.defaultRemoteName.length > 0
       ? raw.defaultRemoteName
@@ -126,7 +123,6 @@ function normalizeRegistryEntry(
     updateStrategy,
     submodules,
     lfs,
-    addedAt,
     managed,
   };
 

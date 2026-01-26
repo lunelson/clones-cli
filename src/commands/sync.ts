@@ -326,7 +326,6 @@ async function adoptPhase(
         updateStrategy: DEFAULTS.updateStrategy,
         submodules: DEFAULTS.submodules,
         lfs: DEFAULTS.lfs,
-        addedAt: new Date().toISOString(),
         managed: true,
       };
 

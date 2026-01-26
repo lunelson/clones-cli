@@ -54,7 +54,6 @@ describe("clones list", () => {
       updateStrategy: "hard-reset",
       submodules: "none",
       lfs: "auto",
-      addedAt: "2026-01-01T00:00:00Z",
       managed: true,
     };
 
@@ -97,7 +96,6 @@ describe("clones list", () => {
       updateStrategy: "hard-reset",
       submodules: "none",
       lfs: "auto",
-      addedAt: "2026-01-01T00:00:00Z",
       managed: true,
     };
 
