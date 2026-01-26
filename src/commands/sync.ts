@@ -36,7 +36,7 @@ import type { RegistryEntry, UpdateResult, Registry, LocalState } from "../types
 
 interface UpdateSummary {
   name: string;
-  action: "adopted" | "cloned" | "updated" | "skipped" | "refreshed" | "error";
+  action: "adopted" | "removed" | "cloned" | "updated" | "skipped" | "refreshed" | "error";
   detail?: string;
 }
 
@@ -58,6 +58,10 @@ export default defineCommand({
       type: "boolean",
       description: "Proceed even if working tree is dirty",
     },
+    keep: {
+      type: "boolean",
+      description: "Keep tombstoned repos on disk (do not delete)",
+    },
     refresh: {
       type: "boolean",
       description: "Refresh metadata (description, tags) from GitHub for all repos",
@@ -68,6 +72,7 @@ export default defineCommand({
 
     const dryRun = args["dry-run"] || false;
     const force = args.force || false;
+    const keep = args.keep || false;
 
     if (dryRun) {
       p.log.warn("Dry run mode - no changes will be made");
@@ -82,9 +87,10 @@ export default defineCommand({
     // ═══════════════════════════════════════════════════════════════════
     p.log.step("Phase 1: Discovering untracked repos...");
 
-    const { adopted, registry: registryAfterAdopt } = await adoptPhase(
+    const { adopted, removed, skipped: adoptSkipped, registry: registryAfterAdopt } =
+      await adoptPhase(
       registry,
-      { dryRun }
+      { dryRun, force, keep }
     );
     registry = registryAfterAdopt;
 
@@ -95,10 +101,33 @@ export default defineCommand({
       });
     }
 
+    for (const repo of removed) {
+      summaries.push({
+        name: `${repo.owner}/${repo.repo}`,
+        action: "removed",
+      });
+    }
+
+    for (const skipped of adoptSkipped) {
+      summaries.push({
+        name: `${skipped.owner}/${skipped.repo}`,
+        action: "skipped",
+        detail: skipped.reason,
+      });
+    }
+
     if (adopted.length === 0) {
       p.log.info("  No untracked repos found");
     } else {
       p.log.success(`  ${adopted.length} repo(s) ${dryRun ? "would be" : ""} adopted`);
+    }
+
+    if (removed.length > 0) {
+      p.log.success(`  ${removed.length} repo(s) ${dryRun ? "would be" : ""} removed`);
+    }
+
+    if (adoptSkipped.length > 0) {
+      p.log.info(`  ${adoptSkipped.length} repo(s) skipped`);
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -253,14 +282,18 @@ export default defineCommand({
 
 interface AdoptResult {
   adopted: { owner: string; repo: string }[];
+  removed: { owner: string; repo: string }[];
+  skipped: { owner: string; repo: string; reason: string }[];
   registry: Registry;
 }
 
 async function adoptPhase(
   registry: Registry,
-  options: { dryRun: boolean }
+  options: { dryRun: boolean; force: boolean; keep: boolean }
 ): Promise<AdoptResult> {
   const adopted: { owner: string; repo: string }[] = [];
+  const removed: { owner: string; repo: string }[] = [];
+  const skipped: { owner: string; repo: string; reason: string }[] = [];
   let updatedRegistry = registry;
 
   const { discovered } = await scanClonesDir();
@@ -295,6 +328,42 @@ async function adoptPhase(
     }
 
     const repoId = generateRepoId(parsed);
+
+    if (registry.tombstones.includes(repoId)) {
+      if (options.keep) {
+        skipped.push({ owner: repo.owner, repo: repo.repo, reason: "tombstoned (--keep)" });
+        p.log.info(`  ○ ${repo.owner}/${repo.repo} (tombstoned, keeping)`);
+        continue;
+      }
+
+      const status = await getRepoStatus(repo.localPath);
+      if (status.isDirty && !options.force) {
+        skipped.push({ owner: repo.owner, repo: repo.repo, reason: "dirty working tree" });
+        p.log.warn(`  ○ ${repo.owner}/${repo.repo} (dirty, use --force)`);
+        continue;
+      }
+
+      if (options.dryRun) {
+        removed.push({ owner: repo.owner, repo: repo.repo });
+        p.log.info(`  - ${repo.owner}/${repo.repo} (would remove)`);
+        continue;
+      }
+
+      try {
+        await rm(repo.localPath, { recursive: true, force: true });
+        removed.push({ owner: repo.owner, repo: repo.repo });
+        p.log.info(`  - ${repo.owner}/${repo.repo} (removed)`);
+      } catch (error) {
+        skipped.push({
+          owner: repo.owner,
+          repo: repo.repo,
+          reason: error instanceof Error ? error.message : String(error),
+        });
+        p.log.warn(`  ○ ${repo.owner}/${repo.repo} (remove failed)`);
+      }
+
+      continue;
+    }
 
     // Check if ID already exists (different owner/repo but same ID)
     if (findEntry(updatedRegistry, repoId)) {
@@ -336,7 +405,7 @@ async function adoptPhase(
     p.log.info(`  + ${repo.owner}/${repo.repo}`);
   }
 
-  return { adopted, registry: updatedRegistry };
+  return { adopted, removed, skipped, registry: updatedRegistry };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -501,6 +570,7 @@ async function updateRepo(
 
 function printSummary(summaries: UpdateSummary[], dryRun: boolean): void {
   const adopted = summaries.filter((s) => s.action === "adopted").length;
+  const removed = summaries.filter((s) => s.action === "removed").length;
   const cloned = summaries.filter((s) => s.action === "cloned").length;
   const updated = summaries.filter((s) => s.action === "updated").length;
   const refreshed = summaries.filter((s) => s.action === "refreshed").length;
@@ -515,6 +585,7 @@ function printSummary(summaries: UpdateSummary[], dryRun: boolean): void {
 
   const parts: string[] = [];
   if (adopted > 0) parts.push(`${adopted} adopted`);
+  if (removed > 0) parts.push(`${removed} removed`);
   if (cloned > 0) parts.push(`${cloned} cloned`);
   if (refreshed > 0) parts.push(`${refreshed} refreshed`);
   if (updated > 0) parts.push(`${updated} updated`);

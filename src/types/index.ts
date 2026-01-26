@@ -6,6 +6,7 @@
 export interface Registry {
   version: "1.0.0";
   repos: RegistryEntry[];
+  tombstones: string[];
 }
 
 export interface RegistryEntry {

@@ -4,6 +4,7 @@ const readRegistry = vi.fn();
 const writeRegistry = vi.fn();
 const addEntry = vi.fn();
 const findEntry = vi.fn();
+const removeTombstone = vi.fn();
 const readLocalState = vi.fn();
 const writeLocalState = vi.fn();
 const updateRepoLocalState = vi.fn();
@@ -28,6 +29,7 @@ vi.mock("../../src/lib/registry.js", () => ({
   writeRegistry,
   addEntry,
   findEntry,
+  removeTombstone,
 }));
 
 vi.mock("../../src/lib/local-state.js", () => ({
@@ -75,7 +77,7 @@ describe("clones add", () => {
   });
 
   it("writes local state with initial lastSyncedAt", async () => {
-    readRegistry.mockResolvedValue({ version: "1.0.0", repos: [] });
+    readRegistry.mockResolvedValue({ version: "1.0.0", repos: [], tombstones: [] });
     findEntry.mockReturnValue(undefined);
     getRepoStatus.mockResolvedValue({
       exists: false,
@@ -103,6 +105,7 @@ describe("clones add", () => {
       ...registry,
       repos: [...registry.repos, entry],
     }));
+    removeTombstone.mockImplementation((registry: any) => registry);
 
     await addCommand.run?.({
       args: {
@@ -117,6 +120,7 @@ describe("clones add", () => {
       },
     } as any);
 
+    expect(removeTombstone).toHaveBeenCalled();
     expect(writeLocalState).toHaveBeenCalledTimes(1);
     const writtenState = (writeLocalState as vi.Mock).mock.calls[0][0];
     expect(writtenState.repos["github.com:owner/repo"].lastSyncedAt).toBe(

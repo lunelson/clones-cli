@@ -6,6 +6,8 @@ import {
   addEntry,
   updateEntry,
   removeEntry,
+  addTombstone,
+  removeTombstone,
   filterByTags,
   filterByPattern,
 } from "../../src/lib/registry.js";
@@ -33,6 +35,7 @@ describe("createEmptyRegistry", () => {
 
     expect(registry.version).toBe("1.0.0");
     expect(registry.repos).toEqual([]);
+    expect(registry.tombstones).toEqual([]);
   });
 });
 
@@ -42,6 +45,7 @@ describe("findEntry", () => {
     const registry: Registry = {
       version: "1.0.0",
       repos: [entry],
+      tombstones: [],
     };
 
     const found = findEntry(registry, "github.com:owner/repo");
@@ -64,6 +68,7 @@ describe("findEntryByOwnerRepo", () => {
     const registry: Registry = {
       version: "1.0.0",
       repos: [entry],
+      tombstones: [],
     };
 
     const found = findEntryByOwnerRepo(registry, "owner", "repo");
@@ -96,6 +101,7 @@ describe("addEntry", () => {
     const registry: Registry = {
       version: "1.0.0",
       repos: [entry],
+      tombstones: [],
     };
 
     expect(() => addEntry(registry, entry)).toThrow(
@@ -120,6 +126,7 @@ describe("updateEntry", () => {
     const registry: Registry = {
       version: "1.0.0",
       repos: [entry],
+      tombstones: [],
     };
 
     const updated = updateEntry(registry, entry.id, {
@@ -144,6 +151,7 @@ describe("updateEntry", () => {
     const registry: Registry = {
       version: "1.0.0",
       repos: [entry],
+      tombstones: [],
     };
 
     const updated = updateEntry(registry, entry.id, {
@@ -161,6 +169,7 @@ describe("removeEntry", () => {
     const registry: Registry = {
       version: "1.0.0",
       repos: [entry],
+      tombstones: [],
     };
 
     const updated = removeEntry(registry, entry.id);
@@ -174,6 +183,29 @@ describe("removeEntry", () => {
     expect(() => removeEntry(registry, "unknown:id")).toThrow(
       "Repository not found in registry"
     );
+  });
+});
+
+describe("tombstones", () => {
+  it("adds tombstone once", () => {
+    const registry = createEmptyRegistry();
+    const updated = addTombstone(registry, "github.com:owner/repo");
+
+    expect(updated.tombstones).toEqual(["github.com:owner/repo"]);
+    expect(addTombstone(updated, "github.com:owner/repo").tombstones).toEqual([
+      "github.com:owner/repo",
+    ]);
+  });
+
+  it("removes tombstone", () => {
+    const registry: Registry = {
+      version: "1.0.0",
+      repos: [],
+      tombstones: ["github.com:owner/repo"],
+    };
+
+    const updated = removeTombstone(registry, "github.com:owner/repo");
+    expect(updated.tombstones).toEqual([]);
   });
 });
 
@@ -209,6 +241,7 @@ describe("filterByTags", () => {
           // no tags
         }),
       ],
+      tombstones: [],
     };
   });
 
@@ -262,6 +295,7 @@ describe("filterByPattern", () => {
           repo: "repo-a",
         }),
       ],
+      tombstones: [],
     };
   });
 

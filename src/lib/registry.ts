@@ -13,6 +13,7 @@ export function createEmptyRegistry(): Registry {
   return {
     version: "1.0.0",
     repos: [],
+    tombstones: [],
   };
 }
 
@@ -130,6 +131,34 @@ export function removeEntry(registry: Registry, id: string): Registry {
   return {
     ...registry,
     repos: filtered,
+  };
+}
+
+/**
+ * Add an ID to tombstones (no-op if already present)
+ */
+export function addTombstone(registry: Registry, id: string): Registry {
+  if (registry.tombstones.includes(id)) {
+    return registry;
+  }
+
+  return {
+    ...registry,
+    tombstones: [...registry.tombstones, id],
+  };
+}
+
+/**
+ * Remove an ID from tombstones (no-op if missing)
+ */
+export function removeTombstone(registry: Registry, id: string): Registry {
+  if (!registry.tombstones.includes(id)) {
+    return registry;
+  }
+
+  return {
+    ...registry,
+    tombstones: registry.tombstones.filter((entryId) => entryId !== id),
   };
 }
 

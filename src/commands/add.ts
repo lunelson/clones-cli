@@ -4,7 +4,13 @@ import { existsSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { parseGitUrl, generateRepoId } from "../lib/url-parser.js";
-import { readRegistry, writeRegistry, addEntry, findEntry } from "../lib/registry.js";
+import {
+  readRegistry,
+  writeRegistry,
+  addEntry,
+  findEntry,
+  removeTombstone,
+} from "../lib/registry.js";
 import {
   readLocalState,
   writeLocalState,
@@ -178,7 +184,8 @@ export default defineCommand({
       };
 
       // Add to registry
-      const updatedRegistry = addEntry(registry, entry);
+      let updatedRegistry = addEntry(registry, entry);
+      updatedRegistry = removeTombstone(updatedRegistry, repoId);
       await writeRegistry(updatedRegistry);
 
       // Update local state with initial lastSyncedAt

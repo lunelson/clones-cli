@@ -8,6 +8,7 @@ import {
   writeRegistry,
   updateEntry,
   addEntry,
+  removeTombstone,
 } from "../lib/registry.js";
 import {
   readLocalState,
@@ -411,7 +412,8 @@ async function addNewClone(): Promise<void> {
     managed: true,
   };
 
-  const updatedRegistry = addEntry(registry, entry);
+  let updatedRegistry = addEntry(registry, entry);
+  updatedRegistry = removeTombstone(updatedRegistry, repoId);
   await writeRegistry(updatedRegistry);
 
   // Update local state with initial lastSyncedAt

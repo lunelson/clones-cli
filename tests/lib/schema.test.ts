@@ -6,6 +6,7 @@ describe("normalizeRegistry", () => {
     const raw = {
       version: "1.0.0",
       extra: "field",
+      tombstones: ["github.com:owner/repo", "github.com:owner/repo", 123],
       repos: [
         {
           id: "github.com:owner/repo",
@@ -30,6 +31,7 @@ describe("normalizeRegistry", () => {
     expect(normalized.data.repos[0].managed).toBe(true);
     expect(normalized.data.repos[0].tags).toEqual(["ok"]);
     expect((normalized.data.repos[0] as any).addedBy).toBeUndefined();
+    expect(normalized.data.tombstones).toEqual([]);
     expect(normalized.issues.length).toBeGreaterThan(0);
   });
 });

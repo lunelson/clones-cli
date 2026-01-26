@@ -2,7 +2,13 @@ import { defineCommand } from "citty";
 import * as p from "@clack/prompts";
 import { rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { readRegistry, writeRegistry, removeEntry, findEntryByOwnerRepo } from "../lib/registry.js";
+import {
+  readRegistry,
+  writeRegistry,
+  removeEntry,
+  findEntryByOwnerRepo,
+  addTombstone,
+} from "../lib/registry.js";
 import { readLocalState, writeLocalState, removeRepoLocalState } from "../lib/local-state.js";
 import { getRepoPath } from "../lib/config.js";
 
@@ -112,7 +118,8 @@ export default defineCommand({
 
     // Remove from registry
     try {
-      const updatedRegistry = removeEntry(registry, entry.id);
+      let updatedRegistry = removeEntry(registry, entry.id);
+      updatedRegistry = addTombstone(updatedRegistry, entry.id);
       await writeRegistry(updatedRegistry);
       p.log.success(`Removed ${owner}/${repo} from registry`);
       try {

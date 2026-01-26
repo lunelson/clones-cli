@@ -138,7 +138,7 @@ export function normalizeRegistry(raw: unknown): NormalizationResult<Registry> {
   let changed = false;
 
   for (const key of Object.keys(raw)) {
-    if (key !== "version" && key !== "repos") {
+    if (key !== "version" && key !== "repos" && key !== "tombstones") {
       issues.push(`registry dropped unknown field "${key}"`);
       changed = true;
     }
@@ -163,8 +163,36 @@ export function normalizeRegistry(raw: unknown): NormalizationResult<Registry> {
     return normalized.entry;
   });
 
+  let tombstones: string[] = [];
+  if (Array.isArray(raw.tombstones)) {
+    const filtered = raw.tombstones.filter(
+      (entry) => typeof entry === "string" && entry.length > 0
+    );
+    if (filtered.length !== raw.tombstones.length) {
+      issues.push("registry dropped invalid tombstones");
+      changed = true;
+    }
+    tombstones = filtered;
+  } else if (raw.tombstones !== undefined) {
+    issues.push("registry dropped invalid tombstones");
+    changed = true;
+  }
+
+  const repoIds = new Set(repos.map((entry) => entry.id));
+  const withoutActive = tombstones.filter((id) => !repoIds.has(id));
+  if (withoutActive.length !== tombstones.length) {
+    issues.push("registry removed tombstones that are active repos");
+    changed = true;
+  }
+
+  const deduped = Array.from(new Set(withoutActive));
+  if (deduped.length !== withoutActive.length) {
+    issues.push("registry removed duplicate tombstones");
+    changed = true;
+  }
+
   return {
-    data: { version: raw.version, repos },
+    data: { version: raw.version, repos, tombstones: deduped },
     changed,
     issues,
   };

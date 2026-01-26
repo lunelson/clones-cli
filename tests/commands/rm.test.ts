@@ -4,6 +4,7 @@ const readRegistry = vi.fn();
 const writeRegistry = vi.fn();
 const removeEntry = vi.fn();
 const findEntryByOwnerRepo = vi.fn();
+const addTombstone = vi.fn();
 const readLocalState = vi.fn();
 const writeLocalState = vi.fn();
 const removeRepoLocalState = vi.fn();
@@ -30,6 +31,7 @@ vi.mock("../../src/lib/registry.js", () => ({
   writeRegistry,
   removeEntry,
   findEntryByOwnerRepo,
+  addTombstone,
 }));
 
 vi.mock("../../src/lib/local-state.js", () => ({
@@ -64,9 +66,13 @@ describe("clones rm", () => {
       repo: "repo",
     };
 
-    readRegistry.mockResolvedValue({ version: "1.0.0", repos: [entry] });
+    readRegistry.mockResolvedValue({ version: "1.0.0", repos: [entry], tombstones: [] });
     findEntryByOwnerRepo.mockReturnValue(entry);
-    removeEntry.mockReturnValue({ version: "1.0.0", repos: [] });
+    removeEntry.mockReturnValue({ version: "1.0.0", repos: [], tombstones: [] });
+    addTombstone.mockImplementation((registry: any, id: string) => ({
+      ...registry,
+      tombstones: [...registry.tombstones, id],
+    }));
     readLocalState.mockResolvedValue({
       version: "1.0.0",
       repos: { [entry.id]: { lastSyncedAt: "2026-01-01T00:00:00Z" } },
@@ -78,6 +84,8 @@ describe("clones rm", () => {
     } as any);
 
     expect(writeRegistry).toHaveBeenCalledTimes(1);
+    const updatedRegistry = writeRegistry.mock.calls[0][0];
+    expect(updatedRegistry.tombstones).toContain(entry.id);
     expect(writeLocalState).toHaveBeenCalledTimes(1);
   });
 });

@@ -57,7 +57,7 @@ describe("clones list", () => {
       managed: true,
     };
 
-    readRegistry.mockResolvedValue({ version: "1.0.0", repos: [entry] });
+    readRegistry.mockResolvedValue({ version: "1.0.0", repos: [entry], tombstones: [] });
     readLocalState.mockResolvedValue({
       version: "1.0.0",
       lastSyncRun: "2026-01-02T00:00:00Z",
@@ -99,7 +99,7 @@ describe("clones list", () => {
       managed: true,
     };
 
-    readRegistry.mockResolvedValue({ version: "1.0.0", repos: [entry] });
+    readRegistry.mockResolvedValue({ version: "1.0.0", repos: [entry], tombstones: [] });
     readLocalState.mockResolvedValue({ version: "1.0.0", repos: {} });
 
     getRepoStatus.mockResolvedValue({

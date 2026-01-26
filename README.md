@@ -88,6 +88,7 @@ clones sync                  # Sync all
 clones sync --filter "unjs/*" # Sync matching repos only
 clones sync --dry-run        # Preview changes
 clones sync --force          # Sync even if working tree is dirty
+clones sync --keep           # Keep tombstoned repos on disk
 clones sync --refresh        # Re-fetch metadata from GitHub
 ```
 
@@ -137,6 +138,7 @@ The registry tracks:
 - Description and tags
 - Update strategy and sync timestamps
 - Submodule and LFS preferences
+- Tombstones (repo IDs that should be removed from disk if found)
 
 Local state tracks:
 - Last sync run and per-repo last synced timestamps (machine-only)
