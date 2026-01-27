@@ -28,7 +28,7 @@ export function formatPathsForClipboard(repos: RepoInfo[]): string {
 /**
  * Format repos as JSON array
  */
-function formatAsJson(repos: RepoInfo[]): string {
+export function formatAsJson(repos: RepoInfo[]): string {
   const data = repos.map((r) => ({
     ownerRepo: `${r.entry.owner}/${r.entry.repo}`,
     path: toUserPath(r.localPath),
@@ -42,21 +42,34 @@ function formatAsJson(repos: RepoInfo[]): string {
 /**
  * Format repos as markdown list
  */
-function formatAsMarkdownList(repos: RepoInfo[]): string {
+export function formatAsMarkdownList(repos: RepoInfo[]): string {
   return repos.map((r) => `- ${r.entry.owner}/${r.entry.repo}`).join("\n");
 }
 
 /**
- * Format repos as markdown table
+ * Format repos as markdown table with aligned columns
  */
-function formatAsMarkdownTable(repos: RepoInfo[]): string {
-  const header = "| Repository | Path | Description |";
-  const separator = "|---|---|---|";
-  const rows = repos.map(
-    (r) =>
-      `| ${r.entry.owner}/${r.entry.repo} | ${toUserPath(r.localPath)} | ${r.entry.description ?? ""} |`
+export function formatAsMarkdownTable(repos: RepoInfo[]): string {
+  const headers = ["Repository", "Path", "Description"];
+  const rows = repos.map((r) => [
+    `${r.entry.owner}/${r.entry.repo}`,
+    toUserPath(r.localPath),
+    r.entry.description ?? "",
+  ]);
+
+  const colWidths = headers.map((h, i) =>
+    Math.max(h.length, ...rows.map((row) => row[i].length))
   );
-  return [header, separator, ...rows].join("\n");
+
+  const pad = (s: string, w: number) => s + " ".repeat(w - s.length);
+
+  const headerRow = "| " + headers.map((h, i) => pad(h, colWidths[i])).join(" | ") + " |";
+  const separatorRow = "| " + colWidths.map((w) => "-".repeat(w)).join(" | ") + " |";
+  const dataRows = rows.map(
+    (row) => "| " + row.map((cell, i) => pad(cell, colWidths[i])).join(" | ") + " |"
+  );
+
+  return [headerRow, separatorRow, ...dataRows].join("\n");
 }
 
 /**

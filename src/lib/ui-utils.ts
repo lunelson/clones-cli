@@ -66,26 +66,55 @@ export function formatDate(isoString: string): string {
 
 /**
  * Copy text to the system clipboard (cross-platform)
+ * Uses stdin to avoid shell escaping issues
  */
 export async function copyToClipboard(text: string): Promise<void> {
+  const { spawn } = await import("node:child_process");
   const platform = process.platform;
-  const escaped = text.replace(/'/g, "'\\''");
 
-  try {
+  return new Promise((resolve, reject) => {
+    let cmd: string;
+    let args: string[];
+
     if (platform === "darwin") {
-      await execAsync(`printf '%s' '${escaped}' | pbcopy`);
+      cmd = "pbcopy";
+      args = [];
     } else if (platform === "linux") {
-      try {
-        await execAsync(`printf '%s' '${escaped}' | xclip -selection clipboard`);
-      } catch {
-        await execAsync(`printf '%s' '${escaped}' | xsel --clipboard --input`);
-      }
+      cmd = "xclip";
+      args = ["-selection", "clipboard"];
     } else if (platform === "win32") {
-      await execAsync(`echo ${JSON.stringify(text)} | clip`);
+      cmd = "clip";
+      args = [];
     } else {
-      throw new Error(`Unsupported platform: ${platform}`);
+      reject(new Error(`Unsupported platform: ${platform}`));
+      return;
     }
-  } catch (error) {
-    throw new Error(`Could not copy to clipboard. Text: ${text}`);
-  }
+
+    const proc = spawn(cmd, args, { stdio: ["pipe", "ignore", "ignore"] });
+
+    proc.on("error", (err) => {
+      if (platform === "linux") {
+        const fallback = spawn("xsel", ["--clipboard", "--input"], {
+          stdio: ["pipe", "ignore", "ignore"],
+        });
+        fallback.stdin.write(text);
+        fallback.stdin.end();
+        fallback.on("close", (code) => {
+          if (code === 0) resolve();
+          else reject(new Error("Could not copy to clipboard"));
+        });
+        fallback.on("error", () => reject(new Error("Could not copy to clipboard")));
+      } else {
+        reject(new Error(`Could not copy to clipboard: ${err.message}`));
+      }
+    });
+
+    proc.stdin.write(text);
+    proc.stdin.end();
+
+    proc.on("close", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error("Could not copy to clipboard"));
+    });
+  });
 }
