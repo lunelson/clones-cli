@@ -19,7 +19,156 @@ import {
 import { cloneRepo, getRepoStatus } from "../lib/git.js";
 import { getRepoPath, getClonesDir, DEFAULTS, ensureClonesDir } from "../lib/config.js";
 import { fetchGitHubMetadata } from "../lib/github.js";
-import type { RegistryEntry } from "../types/index.js";
+import type { Registry, LocalState, RegistryEntry } from "../types/index.js";
+
+interface CloneOptions {
+  tags?: string;
+  description?: string;
+  updateStrategy?: string;
+  submodules?: string;
+  lfs?: string;
+  full: boolean;
+  allBranches: boolean;
+}
+
+interface CloneContext {
+  registry: Registry;
+  localState: LocalState;
+}
+
+async function cloneUrl(
+  url: string,
+  options: CloneOptions,
+  context: CloneContext
+): Promise<CloneContext> {
+  let { registry, localState } = context;
+  let spinnerStarted = false;
+  const s = p.spinner();
+
+  try {
+    const parsed = parseGitUrl(url);
+    const repoId = generateRepoId(parsed);
+    const localPath = getRepoPath(parsed.owner, parsed.repo);
+
+    p.log.info(`Repository: ${parsed.owner}/${parsed.repo}`);
+    p.log.info(`Host: ${parsed.host}`);
+
+    if (findEntry(registry, repoId)) {
+      p.log.error(`Repository already exists in registry: ${repoId}`);
+      p.log.info("Use 'clones update' to sync it, or 'clones rm' to remove it first.");
+      return context;
+    }
+
+    const status = await getRepoStatus(localPath);
+    if (status.exists) {
+      p.log.error(`Local directory already exists: ${localPath}`);
+      p.log.info("Use 'clones adopt' to add existing repos to the registry.");
+      return context;
+    }
+
+    await ensureClonesDir();
+
+    let autoDescription: string | undefined;
+    let autoTopics: string[] | undefined;
+
+    if (parsed.host === "github.com" && !options.description) {
+      s.start(`Fetching metadata from GitHub...`);
+      spinnerStarted = true;
+      const metadata = await fetchGitHubMetadata(parsed.owner, parsed.repo);
+      if (metadata) {
+        autoDescription = metadata.description || undefined;
+        autoTopics = metadata.topics.length > 0 ? metadata.topics : undefined;
+        s.stop("Metadata fetched");
+      } else {
+        s.stop("Could not fetch metadata (continuing without)");
+      }
+    }
+
+    const ownerDir = join(getClonesDir(), parsed.owner);
+    const ownerExistedBefore = existsSync(ownerDir);
+
+    s.start(`Cloning ${parsed.owner}/${parsed.repo}...`);
+    spinnerStarted = true;
+
+    try {
+      await cloneRepo(parsed.cloneUrl, localPath, {
+        fullHistory: options.full,
+        allBranches: options.allBranches,
+      });
+    } catch (cloneError) {
+      s.stop("Clone failed");
+
+      if (!ownerExistedBefore && existsSync(ownerDir)) {
+        try {
+          await rm(ownerDir, { recursive: true, force: true });
+        } catch {
+          // Ignore cleanup errors
+        }
+      }
+
+      throw cloneError;
+    }
+
+    s.stop(`Cloned to ${localPath}`);
+
+    const userTags = options.tags
+      ? options.tags.split(",").map((t: string) => t.trim())
+      : undefined;
+
+    const tags = userTags || autoTopics;
+
+    const updateStrategy =
+      options.updateStrategy === "ff-only" ? "ff-only" : DEFAULTS.updateStrategy;
+
+    const submodules =
+      options.submodules === "recursive" ? "recursive" : DEFAULTS.submodules;
+
+    const lfs =
+      options.lfs === "always"
+        ? "always"
+        : options.lfs === "never"
+        ? "never"
+        : DEFAULTS.lfs;
+
+    const entry: RegistryEntry = {
+      id: repoId,
+      host: parsed.host,
+      owner: parsed.owner,
+      repo: parsed.repo,
+      cloneUrl: parsed.cloneUrl,
+      description: options.description || autoDescription,
+      tags,
+      defaultRemoteName: DEFAULTS.defaultRemoteName,
+      updateStrategy,
+      submodules,
+      lfs,
+      managed: true,
+    };
+
+    registry = addEntry(registry, entry);
+    registry = removeTombstone(registry, repoId);
+    await writeRegistry(registry);
+
+    localState = updateRepoLocalState(localState, repoId, {
+      lastSyncedAt: new Date().toISOString(),
+    });
+    await writeLocalState(localState);
+
+    p.log.success(`Added ${parsed.owner}/${parsed.repo} to registry`);
+
+    if (tags && tags.length > 0) {
+      p.log.info(`Tags: ${tags.join(", ")}`);
+    }
+
+    return { registry, localState };
+  } catch (error) {
+    if (spinnerStarted) {
+      s.stop("Failed");
+    }
+    p.log.error(error instanceof Error ? error.message : String(error));
+    return context;
+  }
+}
 
 export default defineCommand({
   meta: {
@@ -29,8 +178,8 @@ export default defineCommand({
   args: {
     url: {
       type: "positional",
-      description: "Git URL (HTTPS or SSH)",
-      required: true,
+      description: "Git URL (HTTPS or SSH) - can provide multiple",
+      required: false,
     },
     tags: {
       type: "string",
@@ -63,151 +212,60 @@ export default defineCommand({
       default: false,
     },
   },
-  async run({ args }) {
+  async run({ args, rawArgs }) {
     p.intro("clones add");
 
-    let spinnerStarted = false;
-    const s = p.spinner();
+    const options: CloneOptions = {
+      tags: args.tags,
+      description: args.description,
+      updateStrategy: args["update-strategy"],
+      submodules: args.submodules,
+      lfs: args.lfs,
+      full: args.full,
+      allBranches: args["all-branches"],
+    };
 
-    try {
-      // Parse the URL
-      const parsed = parseGitUrl(args.url);
-      const repoId = generateRepoId(parsed);
-      const localPath = getRepoPath(parsed.owner, parsed.repo);
-
-      p.log.info(`Repository: ${parsed.owner}/${parsed.repo}`);
-      p.log.info(`Host: ${parsed.host}`);
-
-      // Read current registry
-      const registry = await readRegistry();
-
-      // Check if already in registry
-      if (findEntry(registry, repoId)) {
-        p.log.error(`Repository already exists in registry: ${repoId}`);
-        p.log.info("Use 'clones update' to sync it, or 'clones rm' to remove it first.");
-        process.exit(1);
-      }
-
-      // Check if local directory already exists
-      const status = await getRepoStatus(localPath);
-      if (status.exists) {
-        p.log.error(`Local directory already exists: ${localPath}`);
-        p.log.info("Use 'clones adopt' to add existing repos to the registry.");
-        process.exit(1);
-      }
-
-      // Ensure clones directory exists
-      await ensureClonesDir();
-
-      // Fetch GitHub metadata if no description provided
-      let autoDescription: string | undefined;
-      let autoTopics: string[] | undefined;
-
-      if (parsed.host === "github.com" && !args.description) {
-        s.start(`Fetching metadata from GitHub...`);
-        spinnerStarted = true;
-        const metadata = await fetchGitHubMetadata(parsed.owner, parsed.repo);
-        if (metadata) {
-          autoDescription = metadata.description || undefined;
-          autoTopics = metadata.topics.length > 0 ? metadata.topics : undefined;
-          s.stop("Metadata fetched");
-        } else {
-          s.stop("Could not fetch metadata (continuing without)");
-        }
-      }
-
-      // Track what exists before clone for rollback
-      const ownerDir = join(getClonesDir(), parsed.owner);
-      const ownerExistedBefore = existsSync(ownerDir);
-
-      // Clone the repository
-      s.start(`Cloning ${parsed.owner}/${parsed.repo}...`);
-      spinnerStarted = true;
-
-      try {
-        await cloneRepo(parsed.cloneUrl, localPath, {
-          fullHistory: args.full,
-          allBranches: args["all-branches"],
-        });
-      } catch (cloneError) {
-        s.stop("Clone failed");
-
-        // Rollback: remove directories created by the failed clone
-        if (!ownerExistedBefore && existsSync(ownerDir)) {
-          try {
-            await rm(ownerDir, { recursive: true, force: true });
-          } catch {
-            // Ignore cleanup errors
-          }
-        }
-
-        throw cloneError;
-      }
-
-      s.stop(`Cloned to ${localPath}`);
-
-      // Parse options - merge CLI args with auto-fetched metadata
-      const userTags = args.tags
-        ? args.tags.split(",").map((t: string) => t.trim())
-        : undefined;
-
-      // Use user-provided tags, or fall back to GitHub topics
-      const tags = userTags || autoTopics;
-
-      const updateStrategy =
-        args["update-strategy"] === "ff-only" ? "ff-only" : DEFAULTS.updateStrategy;
-
-      const submodules =
-        args.submodules === "recursive" ? "recursive" : DEFAULTS.submodules;
-
-      const lfs =
-        args.lfs === "always"
-          ? "always"
-          : args.lfs === "never"
-          ? "never"
-          : DEFAULTS.lfs;
-
-      // Create registry entry
-      const entry: RegistryEntry = {
-        id: repoId,
-        host: parsed.host,
-        owner: parsed.owner,
-        repo: parsed.repo,
-        cloneUrl: parsed.cloneUrl,
-        description: args.description || autoDescription,
-        tags,
-        defaultRemoteName: DEFAULTS.defaultRemoteName,
-        updateStrategy,
-        submodules,
-        lfs,
-        managed: true,
-      };
-
-      // Add to registry
-      let updatedRegistry = addEntry(registry, entry);
-      updatedRegistry = removeTombstone(updatedRegistry, repoId);
-      await writeRegistry(updatedRegistry);
-
-      // Update local state with initial lastSyncedAt
-      let localState = await readLocalState();
-      localState = updateRepoLocalState(localState, repoId, {
-        lastSyncedAt: new Date().toISOString(),
-      });
-      await writeLocalState(localState);
-
-      p.log.success(`Added ${parsed.owner}/${parsed.repo} to registry`);
-
-      if (tags && tags.length > 0) {
-        p.log.info(`Tags: ${tags.join(", ")}`);
-      }
-
-      p.outro("Done!");
-    } catch (error) {
-      if (spinnerStarted) {
-        s.stop("Failed");
-      }
-      p.log.error(error instanceof Error ? error.message : String(error));
-      process.exit(1);
+    const urls: string[] = [];
+    if (args.url) {
+      urls.push(args.url);
     }
+    for (const arg of rawArgs ?? []) {
+      if (!arg.startsWith("-") && arg !== args.url && !urls.includes(arg)) {
+        urls.push(arg);
+      }
+    }
+
+    let context: CloneContext = {
+      registry: await readRegistry(),
+      localState: await readLocalState(),
+    };
+
+    if (urls.length > 0) {
+      for (const url of urls) {
+        context = await cloneUrl(url, options, context);
+      }
+      p.outro("Done!");
+      return;
+    }
+
+    while (true) {
+      const url = await p.text({
+        message: "Enter Git URL",
+        placeholder: "https://github.com/owner/repo or git@github.com:owner/repo",
+      });
+
+      if (p.isCancel(url) || !url) {
+        break;
+      }
+
+      context = await cloneUrl(url, options, context);
+
+      const another = await p.confirm({ message: "Add another?" });
+      if (p.isCancel(another) || !another) {
+        break;
+      }
+    }
+
+    p.outro("Done!");
   },
 });

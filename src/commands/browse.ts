@@ -1,25 +1,13 @@
 import { defineCommand } from "citty";
 import * as p from "@clack/prompts";
-import { existsSync } from "node:fs";
-import { rm } from "node:fs/promises";
-import { join } from "node:path";
-import {
-  readRegistry,
-  writeRegistry,
-  updateEntry,
-  addEntry,
-  removeTombstone,
-} from "../lib/registry.js";
+import { spawn } from "node:child_process";
+import { readRegistry } from "../lib/registry.js";
 import {
   readLocalState,
-  writeLocalState,
-  updateRepoLocalState,
   getLastSyncedAt,
 } from "../lib/local-state.js";
-import { getRepoStatus, cloneRepo } from "../lib/git.js";
-import { getRepoPath, getClonesDir, DEFAULTS, ensureClonesDir } from "../lib/config.js";
-import { parseGitUrl, generateRepoId } from "../lib/url-parser.js";
-import { fetchGitHubMetadata } from "../lib/github.js";
+import { getRepoStatus } from "../lib/git.js";
+import { getRepoPath } from "../lib/config.js";
 import {
   autocompleteMultiselect,
   isCancel,
@@ -27,15 +15,8 @@ import {
 } from "../lib/autocomplete-multiselect.js";
 import { toUserPath, formatRelativeTime, copyToClipboard } from "../lib/ui-utils.js";
 import { showBatchActions, type RepoInfo } from "../lib/browse/batch-actions.js";
-import type { RegistryEntry, Registry } from "../types/index.js";
-
-// Custom error for clean exit propagation through nested async calls
-class ExitRequestedError extends Error {
-  constructor() {
-    super("Exit requested");
-    this.name = "ExitRequestedError";
-  }
-}
+import { ExitRequestedError } from "../lib/browse/errors.js";
+import type { Registry } from "../types/index.js";
 
 function requestExit(): never {
   throw new ExitRequestedError();
@@ -48,57 +29,28 @@ export default defineCommand({
   },
   args: {},
   async run() {
-    await mainMenu();
+    await mainLoop();
   },
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MAIN MENU
+// MAIN LOOP
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function mainMenu(): Promise<void> {
+async function mainLoop(): Promise<void> {
   p.intro("clones");
 
   try {
+    const registry = await readRegistry();
+    if (registry.repos.length === 0) {
+      p.log.info("No repositories in registry.");
+      p.log.info("Use 'clones add <url>' to add a repository.");
+      p.outro("Goodbye!");
+      return;
+    }
+
     while (true) {
-      const registry = await readRegistry();
-      const repoCount = registry.repos.length;
-
-      const action = await p.select({
-        message: "What would you like to do?",
-        options: [
-          {
-            value: "browse",
-            label: "Browse repositories",
-            hint: repoCount > 0 ? `${repoCount} repos` : "none yet",
-          },
-          { value: "add", label: "Add a new clone" },
-          { value: "sync", label: "Sync all clones" },
-          { value: "exit", label: "Exit" },
-        ],
-      });
-
-      if (p.isCancel(action) || action === "exit") {
-        requestExit();
-      }
-
-      switch (action) {
-        case "browse":
-          if (repoCount === 0) {
-            p.log.warn("No repositories yet. Add one first!");
-          } else {
-            await browseRepos(registry);
-          }
-          break;
-
-        case "add":
-          await addNewClone();
-          break;
-
-        case "sync":
-          await runSync();
-          break;
-      }
+      await browseRepos(await readRegistry());
     }
   } catch (error) {
     if (error instanceof ExitRequestedError) {
@@ -230,9 +182,8 @@ async function showRepoDetails(repo: RepoInfo): Promise<void> {
     message: "What would you like to do?",
     options: [
       { value: "copy", label: "Copy path to clipboard" },
-      { value: "edit-tags", label: "Edit tags" },
-      { value: "edit-desc", label: "Edit description" },
-      { value: "back", label: "Back to menu" },
+      { value: "open", label: "Open in editor" },
+      { value: "back", label: "Go back" },
       { value: "exit", label: "Exit" },
     ],
   });
@@ -245,196 +196,19 @@ async function showRepoDetails(repo: RepoInfo): Promise<void> {
     return;
   }
 
-  const registry = await readRegistry();
-
   switch (action) {
-    case "copy":
+    case "copy": {
       const userPath = toUserPath(repo.localPath);
       await copyToClipboard(userPath);
       p.log.success(`Copied: ${userPath}`);
       break;
-
-    case "edit-tags":
-      await editTags(repo, registry);
-      break;
-
-    case "edit-desc":
-      await editDescription(repo, registry);
-      break;
-  }
-}
-
-async function editTags(repo: RepoInfo, registry: Registry): Promise<void> {
-  const currentTags = repo.entry.tags?.join(", ") || "";
-
-  const newTags = await p.text({
-    message: "Enter tags (comma-separated)",
-    initialValue: currentTags,
-    placeholder: "cli, typescript, framework",
-  });
-
-  if (p.isCancel(newTags)) {
-    return;
-  }
-
-  const tags = newTags
-    ? newTags
-        .split(",")
-        .map((t) => t.trim())
-        .filter((t) => t.length > 0)
-    : undefined;
-
-  const updatedRegistry = updateEntry(registry, repo.entry.id, { tags });
-  await writeRegistry(updatedRegistry);
-
-  p.log.success(`Tags updated for ${repo.entry.owner}/${repo.entry.repo}`);
-}
-
-async function editDescription(repo: RepoInfo, registry: Registry): Promise<void> {
-  const newDesc = await p.text({
-    message: "Enter description",
-    initialValue: repo.entry.description || "",
-    placeholder: "A brief description of this repository",
-  });
-
-  if (p.isCancel(newDesc)) {
-    return;
-  }
-
-  const description = newDesc || undefined;
-
-  const updatedRegistry = updateEntry(registry, repo.entry.id, { description });
-  await writeRegistry(updatedRegistry);
-
-  p.log.success(`Description updated for ${repo.entry.owner}/${repo.entry.repo}`);
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// ADD NEW CLONE
-// ─────────────────────────────────────────────────────────────────────────────
-
-async function addNewClone(): Promise<void> {
-  const url = await p.text({
-    message: "Enter Git URL (HTTPS or SSH)",
-    placeholder: "https://github.com/owner/repo",
-  });
-
-  if (p.isCancel(url) || !url) {
-    return;
-  }
-
-  let parsed;
-  try {
-    parsed = parseGitUrl(url);
-  } catch (error) {
-    p.log.error(`Invalid Git URL: ${url}`);
-    return;
-  }
-
-  const repoId = generateRepoId(parsed);
-  const localPath = getRepoPath(parsed.owner, parsed.repo);
-
-  p.log.info(`Repository: ${parsed.owner}/${parsed.repo}`);
-  p.log.info(`Host: ${parsed.host}`);
-
-  // Check if already exists
-  const registry = await readRegistry();
-  if (registry.repos.find((e) => e.id === repoId)) {
-    p.log.error(`Already in registry: ${repoId}`);
-    return;
-  }
-
-  const status = await getRepoStatus(localPath);
-  if (status.exists) {
-    p.log.error(`Directory already exists: ${localPath}`);
-    p.log.info("It will be adopted on next sync.");
-    return;
-  }
-
-  // Fetch GitHub metadata before cloning
-  await ensureClonesDir();
-
-  const s = p.spinner();
-  let autoDescription: string | undefined;
-  let autoTopics: string[] | undefined;
-
-  if (parsed.host === "github.com") {
-    s.start(`Fetching metadata from GitHub...`);
-    const metadata = await fetchGitHubMetadata(parsed.owner, parsed.repo);
-    if (metadata) {
-      autoDescription = metadata.description || undefined;
-      autoTopics = metadata.topics.length > 0 ? metadata.topics : undefined;
-      s.stop("Metadata fetched");
-    } else {
-      s.stop("Could not fetch metadata (continuing without)");
-    }
-  }
-
-  // Track what exists before clone for rollback
-  const ownerDir = join(getClonesDir(), parsed.owner);
-  const ownerExistedBefore = existsSync(ownerDir);
-
-  // Clone
-  s.start(`Cloning ${parsed.owner}/${parsed.repo}...`);
-
-  try {
-    await cloneRepo(parsed.cloneUrl, localPath);
-    s.stop(`Cloned to ${localPath}`);
-  } catch (error) {
-    s.stop("Clone failed");
-
-    // Rollback: remove directories created by the failed clone
-    if (!ownerExistedBefore && existsSync(ownerDir)) {
-      try {
-        await rm(ownerDir, { recursive: true, force: true });
-      } catch {
-        // Ignore cleanup errors
-      }
     }
 
-    p.log.error(error instanceof Error ? error.message : String(error));
-    return;
+    case "open": {
+      const editor = process.env.EDITOR || "code";
+      spawn(editor, [repo.localPath], { detached: true, stdio: "ignore" }).unref();
+      p.log.success(`Opened in ${editor}`);
+      break;
+    }
   }
-
-  // Add to registry
-  const entry: RegistryEntry = {
-    id: repoId,
-    host: parsed.host,
-    owner: parsed.owner,
-    repo: parsed.repo,
-    cloneUrl: parsed.cloneUrl,
-    description: autoDescription,
-    tags: autoTopics,
-    defaultRemoteName: DEFAULTS.defaultRemoteName,
-    updateStrategy: DEFAULTS.updateStrategy,
-    submodules: DEFAULTS.submodules,
-    lfs: DEFAULTS.lfs,
-    managed: true,
-  };
-
-  let updatedRegistry = addEntry(registry, entry);
-  updatedRegistry = removeTombstone(updatedRegistry, repoId);
-  await writeRegistry(updatedRegistry);
-
-  // Update local state with initial lastSyncedAt
-  let localState = await readLocalState();
-  localState = updateRepoLocalState(localState, repoId, {
-    lastSyncedAt: new Date().toISOString(),
-  });
-  await writeLocalState(localState);
-
-  p.log.success(`Added ${parsed.owner}/${parsed.repo} to registry`);
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SYNC
-// ─────────────────────────────────────────────────────────────────────────────
-
-async function runSync(): Promise<void> {
-  p.log.info("Running sync...");
-  console.log();
-
-  // Import and run the sync command
-  const { default: syncCommand } = await import("./sync.js");
-  await syncCommand.run?.({ args: {} } as any);
 }

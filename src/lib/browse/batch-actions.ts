@@ -2,10 +2,12 @@
  * Batch operations for multiple repository selections
  */
 
+import { spawn } from "node:child_process";
 import * as p from "@clack/prompts";
 import { toUserPath, copyToClipboard } from "../ui-utils.js";
 import { readRegistry, writeRegistry, updateEntry } from "../registry.js";
 import type { RegistryEntry, RepoStatus } from "../../types/index.js";
+import { ExitRequestedError } from "./errors.js";
 
 /**
  * Repository info with status - shared type for browse operations
@@ -21,6 +23,49 @@ export interface RepoInfo {
  */
 export function formatPathsForClipboard(repos: RepoInfo[]): string {
   return repos.map((r) => toUserPath(r.localPath)).join("\n");
+}
+
+/**
+ * Format repos as JSON array
+ */
+function formatAsJson(repos: RepoInfo[]): string {
+  const data = repos.map((r) => ({
+    ownerRepo: `${r.entry.owner}/${r.entry.repo}`,
+    path: toUserPath(r.localPath),
+    description: r.entry.description ?? null,
+    tags: r.entry.tags ?? [],
+    cloneUrl: r.entry.cloneUrl,
+  }));
+  return JSON.stringify(data, null, 2);
+}
+
+/**
+ * Format repos as markdown list
+ */
+function formatAsMarkdownList(repos: RepoInfo[]): string {
+  return repos.map((r) => `- ${r.entry.owner}/${r.entry.repo}`).join("\n");
+}
+
+/**
+ * Format repos as markdown table
+ */
+function formatAsMarkdownTable(repos: RepoInfo[]): string {
+  const header = "| Repository | Path | Description |";
+  const separator = "|---|---|---|";
+  const rows = repos.map(
+    (r) =>
+      `| ${r.entry.owner}/${r.entry.repo} | ${toUserPath(r.localPath)} | ${r.entry.description ?? ""} |`
+  );
+  return [header, separator, ...rows].join("\n");
+}
+
+/**
+ * Open repos in VS Code editor
+ */
+function openInEditor(repos: RepoInfo[]): void {
+  for (const repo of repos) {
+    spawn("code", [repo.localPath], { detached: true, stdio: "ignore" }).unref();
+  }
 }
 
 /**
@@ -130,10 +175,13 @@ export async function showBatchActions(repos: RepoInfo[]): Promise<void> {
     const action = await p.select({
       message: `Batch actions for ${repos.length} repositories`,
       options: [
-        { value: "copy", label: "Copy all paths to clipboard" },
-        { value: "summary", label: "Show summary" },
-        { value: "edit-tags", label: "Batch edit tags" },
-        { value: "back", label: "Back to menu" },
+        { value: "copy-paths", label: "Copy as path strings", hint: "newline-separated with ~" },
+        { value: "copy-json", label: "Copy as JSON", hint: "array of objects" },
+        { value: "copy-md-list", label: "Copy as markdown list", hint: "- owner/repo" },
+        { value: "copy-md-table", label: "Copy as markdown table", hint: "| repo | path | desc |" },
+        { value: "open-editor", label: "Open in editor", hint: "spawn code for each" },
+        { value: "back", label: "Go back and clear filter" },
+        { value: "exit", label: "Exit" },
       ],
     });
 
@@ -141,21 +189,44 @@ export async function showBatchActions(repos: RepoInfo[]): Promise<void> {
       return;
     }
 
+    if (action === "exit") {
+      throw new ExitRequestedError();
+    }
+
     switch (action) {
-      case "copy": {
+      case "copy-paths": {
         const pathsText = formatPathsForClipboard(repos);
         await copyToClipboard(pathsText);
         p.log.success(`Copied ${repos.length} paths to clipboard`);
         break;
       }
 
-      case "summary":
-        showReposSummary(repos);
+      case "copy-json": {
+        const jsonText = formatAsJson(repos);
+        await copyToClipboard(jsonText);
+        p.log.success(`Copied ${repos.length} repos as JSON to clipboard`);
         break;
+      }
 
-      case "edit-tags":
-        await batchEditTags(repos);
+      case "copy-md-list": {
+        const mdList = formatAsMarkdownList(repos);
+        await copyToClipboard(mdList);
+        p.log.success(`Copied ${repos.length} repos as markdown list to clipboard`);
         break;
+      }
+
+      case "copy-md-table": {
+        const mdTable = formatAsMarkdownTable(repos);
+        await copyToClipboard(mdTable);
+        p.log.success(`Copied ${repos.length} repos as markdown table to clipboard`);
+        break;
+      }
+
+      case "open-editor": {
+        openInEditor(repos);
+        p.log.success(`Opened ${repos.length} repos in VS Code`);
+        break;
+      }
     }
   }
 }
