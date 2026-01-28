@@ -2,8 +2,8 @@
  * Reusable filter factories for autocomplete/search components
  */
 
-import type { Option, FilterFn } from "./autocomplete-multiselect.js";
-import type { RegistryEntry } from "../types/index.js";
+import type { Option, FilterFn } from './autocomplete-multiselect.js';
+import type { RegistryEntry } from '../types/index.js';
 
 // Re-export FilterFn for convenience
 export type { FilterFn };
@@ -19,8 +19,8 @@ export function createRepoFilter(): FilterFn<RegistryEntry> {
     const term = searchText.toLowerCase();
     const entry = option.value;
     const label = `${entry.owner}/${entry.repo}`.toLowerCase();
-    const tags = entry.tags?.join(" ").toLowerCase() ?? "";
-    const desc = entry.description?.toLowerCase() ?? "";
+    const tags = entry.tags?.join(' ').toLowerCase() ?? '';
+    const desc = entry.description?.toLowerCase() ?? '';
 
     return label.includes(term) || tags.includes(term) || desc.includes(term);
   };

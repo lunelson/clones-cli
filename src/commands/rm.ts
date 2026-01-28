@@ -1,48 +1,44 @@
-import { defineCommand } from "citty";
-import * as p from "@clack/prompts";
-import { rm } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { defineCommand } from 'citty';
+import * as p from '@clack/prompts';
+import { rm } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import {
   readRegistry,
   writeRegistry,
   removeEntry,
   findEntryByOwnerRepo,
   addTombstone,
-} from "../lib/registry.js";
-import { readLocalState, writeLocalState, removeRepoLocalState } from "../lib/local-state.js";
-import { getRepoPath } from "../lib/config.js";
-import {
-  autocompleteMultiselect,
-  isCancel,
-  type Option,
-} from "../lib/autocomplete-multiselect.js";
-import type { RegistryEntry } from "../types/index.js";
+} from '../lib/registry.js';
+import { readLocalState, writeLocalState, removeRepoLocalState } from '../lib/local-state.js';
+import { getRepoPath } from '../lib/config.js';
+import { autocompleteMultiselect, isCancel, type Option } from '../lib/autocomplete-multiselect.js';
+import type { RegistryEntry } from '../types/index.js';
 
 export default defineCommand({
   meta: {
-    name: "rm",
-    description: "Remove a repository from the registry (and optionally from disk)",
+    name: 'rm',
+    description: 'Remove a repository from the registry (and optionally from disk)',
   },
   args: {
     repo: {
-      type: "positional",
-      description: "Repository identifier (owner/repo)",
+      type: 'positional',
+      description: 'Repository identifier (owner/repo)',
       required: false,
     },
-    "keep-disk": {
-      type: "boolean",
-      description: "Keep the local directory (only remove from registry)",
+    'keep-disk': {
+      type: 'boolean',
+      description: 'Keep the local directory (only remove from registry)',
       default: false,
     },
     yes: {
-      type: "boolean",
-      alias: "y",
-      description: "Skip confirmation prompt",
+      type: 'boolean',
+      alias: 'y',
+      description: 'Skip confirmation prompt',
       default: false,
     },
   },
   async run({ args }) {
-    p.intro("clones rm");
+    p.intro('clones rm');
 
     if (!args.repo) {
       await interactiveRemove(args);
@@ -50,10 +46,10 @@ export default defineCommand({
     }
 
     // Parse owner/repo from argument
-    const parts = args.repo.split("/");
+    const parts = args.repo.split('/');
     if (parts.length !== 2) {
       p.log.error(`Invalid format: ${args.repo}`);
-      p.log.info("Expected format: owner/repo");
+      p.log.info('Expected format: owner/repo');
       process.exit(1);
     }
 
@@ -79,16 +75,16 @@ export default defineCommand({
     p.log.info(`Repository: ${owner}/${repo}`);
     p.log.info(`Registry ID: ${entry.id}`);
     p.log.info(`Local path: ${localPath}`);
-    p.log.info(`On disk: ${diskExists ? "Yes" : "No (already deleted)"}`);
+    p.log.info(`On disk: ${diskExists ? 'Yes' : 'No (already deleted)'}`);
 
     // Determine actions
-    const willDeleteFromDisk = diskExists && !args["keep-disk"];
+    const willDeleteFromDisk = diskExists && !args['keep-disk'];
 
-    p.log.step("\nActions to perform:");
+    p.log.step('\nActions to perform:');
     p.log.message(`   ✓ Remove from registry`);
     if (willDeleteFromDisk) {
       p.log.message(`   ✓ Delete local directory`);
-    } else if (diskExists && args["keep-disk"]) {
+    } else if (diskExists && args['keep-disk']) {
       p.log.message(`   ○ Keep local directory (--keep-disk)`);
     } else if (!diskExists) {
       p.log.message(`   ○ Local directory doesn't exist`);
@@ -105,7 +101,7 @@ export default defineCommand({
       });
 
       if (p.isCancel(shouldContinue) || !shouldContinue) {
-        p.outro("Cancelled");
+        p.outro('Cancelled');
         return;
       }
     }
@@ -119,9 +115,9 @@ export default defineCommand({
         await rm(localPath, { recursive: true, force: true });
         s.stop(`Deleted ${localPath}`);
       } catch (error) {
-        s.stop("Failed to delete directory");
+        s.stop('Failed to delete directory');
         p.log.error(error instanceof Error ? error.message : String(error));
-        p.log.info("Registry entry was NOT removed. Fix the issue and try again.");
+        p.log.info('Registry entry was NOT removed. Fix the issue and try again.');
         process.exit(1);
       }
     }
@@ -146,14 +142,14 @@ export default defineCommand({
       process.exit(1);
     }
 
-    p.outro("Done!");
+    p.outro('Done!');
   },
 });
 
-async function interactiveRemove(args: { "keep-disk"?: boolean; yes?: boolean }) {
+async function interactiveRemove(args: { 'keep-disk'?: boolean; yes?: boolean }) {
   const registry = await readRegistry();
   if (registry.repos.length === 0) {
-    p.log.info("No repositories in registry.");
+    p.log.info('No repositories in registry.');
     return;
   }
 
@@ -168,29 +164,29 @@ async function interactiveRemove(args: { "keep-disk"?: boolean; yes?: boolean })
     const term = searchText.toLowerCase();
     const entry = option.value;
     const label = `${entry.owner}/${entry.repo}`.toLowerCase();
-    const tags = entry.tags?.join(" ").toLowerCase() ?? "";
-    const desc = entry.description?.toLowerCase() ?? "";
+    const tags = entry.tags?.join(' ').toLowerCase() ?? '';
+    const desc = entry.description?.toLowerCase() ?? '';
     return label.includes(term) || tags.includes(term) || desc.includes(term);
   };
 
   const selected = await autocompleteMultiselect({
-    message: "Select repositories to remove (type to filter, Tab to select)",
+    message: 'Select repositories to remove (type to filter, Tab to select)',
     options,
-    placeholder: "Type to search...",
+    placeholder: 'Type to search...',
     filter,
   });
 
   if (isCancel(selected)) {
-    p.outro("Cancelled");
+    p.outro('Cancelled');
     return;
   }
 
   if (selected.length === 0) {
-    p.log.info("No repositories selected.");
+    p.log.info('No repositories selected.');
     return;
   }
 
-  const willDeleteFromDisk = !args["keep-disk"];
+  const willDeleteFromDisk = !args['keep-disk'];
   const confirmMessage = willDeleteFromDisk
     ? `Remove ${selected.length} repositories? (this will delete from disk)`
     : `Remove ${selected.length} repositories from registry?`;
@@ -201,7 +197,7 @@ async function interactiveRemove(args: { "keep-disk"?: boolean; yes?: boolean })
     });
 
     if (p.isCancel(shouldContinue) || !shouldContinue) {
-      p.outro("Cancelled");
+      p.outro('Cancelled');
       return;
     }
   }
@@ -215,7 +211,9 @@ async function interactiveRemove(args: { "keep-disk"?: boolean; yes?: boolean })
         await rm(localPath, { recursive: true, force: true });
         p.log.step(`Deleted ${localPath}`);
       } catch (error) {
-        p.log.error(`Failed to delete ${localPath}: ${error instanceof Error ? error.message : String(error)}`);
+        p.log.error(
+          `Failed to delete ${localPath}: ${error instanceof Error ? error.message : String(error)}`
+        );
         continue;
       }
     }
@@ -235,9 +233,11 @@ async function interactiveRemove(args: { "keep-disk"?: boolean; yes?: boolean })
         // Ignore local state errors
       }
     } catch (error) {
-      p.log.error(`Failed to remove ${entry.owner}/${entry.repo}: ${error instanceof Error ? error.message : String(error)}`);
+      p.log.error(
+        `Failed to remove ${entry.owner}/${entry.repo}: ${error instanceof Error ? error.message : String(error)}`
+      );
     }
   }
 
-  p.outro("Done!");
+  p.outro('Done!');
 }

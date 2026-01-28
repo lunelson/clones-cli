@@ -4,7 +4,7 @@
  */
 
 export interface Registry {
-  version: "1.0.0";
+  version: '1.0.0';
   repos: RegistryEntry[];
   tombstones: string[];
 }
@@ -23,9 +23,9 @@ export interface RegistryEntry {
 
   // Behavior
   defaultRemoteName: string; // Usually "origin"
-  updateStrategy: "hard-reset" | "ff-only";
-  submodules: "none" | "recursive";
-  lfs: "auto" | "always" | "never";
+  updateStrategy: 'hard-reset' | 'ff-only';
+  submodules: 'none' | 'recursive';
+  lfs: 'auto' | 'always' | 'never';
 
   // Tracking
   // State
@@ -39,7 +39,7 @@ export interface RegistryEntry {
  */
 
 export interface LocalState {
-  version: "1.0.0";
+  version: '1.0.0';
   lastSyncRun?: string; // ISO 8601 - when sync was last run on this machine
   repos: {
     [repoId: string]: RepoLocalState;
@@ -78,6 +78,6 @@ export interface RepoStatus {
  * Result of an update operation for a single repo
  */
 export type UpdateResult =
-  | { status: "updated"; commits: number }
-  | { status: "skipped"; reason: string }
-  | { status: "error"; error: string };
+  | { status: 'updated'; commits: number }
+  | { status: 'skipped'; reason: string }
+  | { status: 'error'; error: string };

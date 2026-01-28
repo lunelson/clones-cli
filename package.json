@@ -2,9 +2,20 @@
   "name": "clones-cli",
   "version": "0.2.0",
   "description": "A read-only Git repository manager for exploration and reference",
+  "keywords": [
+    "git",
+    "clone",
+    "repository",
+    "manager",
+    "cli"
+  ],
   "repository": {
-    "url": "git@github.com:lunelson/clones-cli.git",
-    "type": "git"
+    "type": "git",
+    "url": "git@github.com:lunelson/clones-cli.git"
+  },
+  "license": "MIT",
+  "author": {
+    "name": "Lu Nelson"
   },
   "type": "module",
   "bin": {
@@ -16,21 +27,18 @@
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
-    "test": "vitest",
-    "test:run": "vitest run",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint src/",
+    "lint:fix": "eslint src/ --fix",
+    "prepack": "npm run build",
+    "prepublishOnly": "npm test",
+    "release": "np",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
   },
-  "keywords": [
-    "git",
-    "clone",
-    "repository",
-    "manager",
-    "cli"
-  ],
-  "author": "lunelson",
-  "license": "MIT",
   "dependencies": {
-    "@clack/core": "^0.5.0",
     "@clack/prompts": "^0.11.0",
     "citty": "^0.1.6",
     "fast-wrap-ansi": "^0.2.0",
@@ -40,12 +48,18 @@
     "sisteransi": "^1.0.5"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.2",
     "@types/node": "^22.0.0",
+    "eslint": "^9.39.2",
+    "eslint-config-prettier": "^10.1.8",
+    "np": "^10.2.0",
+    "prettier": "^3.8.0",
     "tsup": "^8.3.0",
     "typescript": "^5.7.0",
+    "typescript-eslint": "^8.53.1",
     "vitest": "^2.1.0"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=18"
   }
 }

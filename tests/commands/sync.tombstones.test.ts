@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const readRegistry = vi.fn();
 const writeRegistry = vi.fn();
@@ -10,7 +10,7 @@ const getRemoteUrl = vi.fn();
 const getRepoStatus = vi.fn();
 const rm = vi.fn();
 
-vi.mock("@clack/prompts", () => ({
+vi.mock('@clack/prompts', () => ({
   intro: vi.fn(),
   outro: vi.fn(),
   spinner: () => ({ start: vi.fn(), stop: vi.fn() }),
@@ -24,9 +24,9 @@ vi.mock("@clack/prompts", () => ({
   },
 }));
 
-vi.mock("../../src/lib/registry.js", async () => {
-  const actual = await vi.importActual<typeof import("../../src/lib/registry.js")>(
-    "../../src/lib/registry.js"
+vi.mock('../../src/lib/registry.js', async () => {
+  const actual = await vi.importActual<typeof import('../../src/lib/registry.js')>(
+    '../../src/lib/registry.js'
   );
   return {
     ...actual,
@@ -35,9 +35,9 @@ vi.mock("../../src/lib/registry.js", async () => {
   };
 });
 
-vi.mock("../../src/lib/local-state.js", async () => {
-  const actual = await vi.importActual<typeof import("../../src/lib/local-state.js")>(
-    "../../src/lib/local-state.js"
+vi.mock('../../src/lib/local-state.js', async () => {
+  const actual = await vi.importActual<typeof import('../../src/lib/local-state.js')>(
+    '../../src/lib/local-state.js'
   );
   return {
     ...actual,
@@ -46,12 +46,12 @@ vi.mock("../../src/lib/local-state.js", async () => {
   };
 });
 
-vi.mock("../../src/lib/scan.js", () => ({
+vi.mock('../../src/lib/scan.js', () => ({
   scanClonesDir,
   isNestedRepo,
 }));
 
-vi.mock("../../src/lib/git.js", () => ({
+vi.mock('../../src/lib/git.js', () => ({
   fetchWithPrune: vi.fn(),
   resetHard: vi.fn(),
   pullFastForward: vi.fn(),
@@ -63,36 +63,36 @@ vi.mock("../../src/lib/git.js", () => ({
   getRepoStatus,
 }));
 
-vi.mock("node:fs/promises", () => ({
+vi.mock('node:fs/promises', () => ({
   rm,
 }));
 
-const { default: syncCommand } = await import("../../src/commands/sync.js");
+const { default: syncCommand } = await import('../../src/commands/sync.js');
 
-describe("clones sync tombstones", () => {
+describe('clones sync tombstones', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("removes tombstoned repos from disk and does not adopt them", async () => {
+  it('removes tombstoned repos from disk and does not adopt them', async () => {
     readRegistry.mockResolvedValue({
-      version: "1.0.0",
+      version: '1.0.0',
       repos: [],
-      tombstones: ["github.com:owner/repo"],
+      tombstones: ['github.com:owner/repo'],
     });
-    readLocalState.mockResolvedValue({ version: "1.0.0", repos: {} });
+    readLocalState.mockResolvedValue({ version: '1.0.0', repos: {} });
     scanClonesDir.mockResolvedValue({
-      discovered: [{ owner: "owner", repo: "repo", localPath: "/tmp/owner/repo" }],
+      discovered: [{ owner: 'owner', repo: 'repo', localPath: '/tmp/owner/repo' }],
       skipped: [],
     });
     isNestedRepo.mockResolvedValue(false);
-    getRemoteUrl.mockResolvedValue("https://github.com/owner/repo.git");
+    getRemoteUrl.mockResolvedValue('https://github.com/owner/repo.git');
     getRepoStatus.mockResolvedValue({
       exists: true,
       isGitRepo: true,
-      currentBranch: "main",
+      currentBranch: 'main',
       isDetached: false,
-      tracking: "origin/main",
+      tracking: 'origin/main',
       ahead: 0,
       behind: 0,
       isDirty: false,
@@ -100,31 +100,31 @@ describe("clones sync tombstones", () => {
 
     await syncCommand.run?.({ args: {} } as any);
 
-    expect(rm).toHaveBeenCalledWith("/tmp/owner/repo", { recursive: true, force: true });
+    expect(rm).toHaveBeenCalledWith('/tmp/owner/repo', { recursive: true, force: true });
     const writtenRegistry = writeRegistry.mock.calls[0][0];
     expect(writtenRegistry.repos).toHaveLength(0);
-    expect(writtenRegistry.tombstones).toContain("github.com:owner/repo");
+    expect(writtenRegistry.tombstones).toContain('github.com:owner/repo');
   });
 
-  it("keeps tombstoned repos on disk when --keep is set", async () => {
+  it('keeps tombstoned repos on disk when --keep is set', async () => {
     readRegistry.mockResolvedValue({
-      version: "1.0.0",
+      version: '1.0.0',
       repos: [],
-      tombstones: ["github.com:owner/repo"],
+      tombstones: ['github.com:owner/repo'],
     });
-    readLocalState.mockResolvedValue({ version: "1.0.0", repos: {} });
+    readLocalState.mockResolvedValue({ version: '1.0.0', repos: {} });
     scanClonesDir.mockResolvedValue({
-      discovered: [{ owner: "owner", repo: "repo", localPath: "/tmp/owner/repo" }],
+      discovered: [{ owner: 'owner', repo: 'repo', localPath: '/tmp/owner/repo' }],
       skipped: [],
     });
     isNestedRepo.mockResolvedValue(false);
-    getRemoteUrl.mockResolvedValue("https://github.com/owner/repo.git");
+    getRemoteUrl.mockResolvedValue('https://github.com/owner/repo.git');
     getRepoStatus.mockResolvedValue({
       exists: true,
       isGitRepo: true,
-      currentBranch: "main",
+      currentBranch: 'main',
       isDetached: false,
-      tracking: "origin/main",
+      tracking: 'origin/main',
       ahead: 0,
       behind: 0,
       isDirty: false,
@@ -135,6 +135,6 @@ describe("clones sync tombstones", () => {
     expect(rm).not.toHaveBeenCalled();
     const writtenRegistry = writeRegistry.mock.calls[0][0];
     expect(writtenRegistry.repos).toHaveLength(0);
-    expect(writtenRegistry.tombstones).toContain("github.com:owner/repo");
+    expect(writtenRegistry.tombstones).toContain('github.com:owner/repo');
   });
 });

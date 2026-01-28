@@ -1,7 +1,7 @@
-import { readdir, stat, lstat } from "node:fs/promises";
-import { join } from "node:path";
-import { existsSync } from "node:fs";
-import { getClonesDir } from "./config.js";
+import { readdir, stat, lstat } from 'node:fs/promises';
+import { join } from 'node:path';
+import { existsSync } from 'node:fs';
+import { getClonesDir } from './config.js';
 
 /**
  * Represents a discovered repository on disk
@@ -73,7 +73,7 @@ export async function scanClonesDir(): Promise<ScanResult> {
 
   for (const owner of ownerDirs) {
     // Skip hidden files and registry.json
-    if (owner.startsWith(".") || owner === "registry.json") {
+    if (owner.startsWith('.') || owner === 'registry.json') {
       continue;
     }
 
@@ -81,7 +81,7 @@ export async function scanClonesDir(): Promise<ScanResult> {
 
     // Skip symlinks at owner level
     if (await isSymlink(ownerPath)) {
-      skipped.push({ path: ownerPath, reason: "Symlink (skipped)" });
+      skipped.push({ path: ownerPath, reason: 'Symlink (skipped)' });
       continue;
     }
 
@@ -104,7 +104,7 @@ export async function scanClonesDir(): Promise<ScanResult> {
 
     for (const repo of repoDirs) {
       // Skip hidden directories
-      if (repo.startsWith(".")) {
+      if (repo.startsWith('.')) {
         continue;
       }
 
@@ -112,7 +112,7 @@ export async function scanClonesDir(): Promise<ScanResult> {
 
       // Skip symlinks at repo level
       if (await isSymlink(repoPath)) {
-        skipped.push({ path: repoPath, reason: "Symlink (skipped)" });
+        skipped.push({ path: repoPath, reason: 'Symlink (skipped)' });
         continue;
       }
 
@@ -122,11 +122,11 @@ export async function scanClonesDir(): Promise<ScanResult> {
       }
 
       // Check for .git directory
-      const gitPath = join(repoPath, ".git");
+      const gitPath = join(repoPath, '.git');
       const hasGit = existsSync(gitPath);
 
       if (!hasGit) {
-        skipped.push({ path: repoPath, reason: "No .git directory" });
+        skipped.push({ path: repoPath, reason: 'No .git directory' });
         continue;
       }
 
@@ -148,7 +148,7 @@ export async function scanClonesDir(): Promise<ScanResult> {
  * A worktree has a .git file with "gitdir:" reference
  */
 export async function isNestedRepo(localPath: string): Promise<boolean> {
-  const gitPath = join(localPath, ".git");
+  const gitPath = join(localPath, '.git');
 
   try {
     const stats = await lstat(gitPath);
@@ -163,9 +163,9 @@ export async function isNestedRepo(localPath: string): Promise<boolean> {
     const clonesDir = getClonesDir();
     let current = localPath;
 
-    while (current !== clonesDir && current !== "/") {
-      const parent = join(current, "..");
-      const parentGit = join(parent, ".git");
+    while (current !== clonesDir && current !== '/') {
+      const parent = join(current, '..');
+      const parentGit = join(parent, '.git');
 
       if (existsSync(parentGit) && parent !== clonesDir) {
         // There's a .git above us (but not at clones root)

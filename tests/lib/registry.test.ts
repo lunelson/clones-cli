@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach } from 'vitest';
 import {
   createEmptyRegistry,
   findEntry,
@@ -10,83 +10,83 @@ import {
   removeTombstone,
   filterByTags,
   filterByPattern,
-} from "../../src/lib/registry.js";
-import type { Registry, RegistryEntry } from "../../src/types/index.js";
+} from '../../src/lib/registry.js';
+import type { Registry, RegistryEntry } from '../../src/types/index.js';
 
 function createTestEntry(overrides: Partial<RegistryEntry> = {}): RegistryEntry {
   return {
-    id: "github.com:owner/repo",
-    host: "github.com",
-    owner: "owner",
-    repo: "repo",
-    cloneUrl: "https://github.com/owner/repo.git",
-    defaultRemoteName: "origin",
-    updateStrategy: "hard-reset",
-    submodules: "none",
-    lfs: "auto",
+    id: 'github.com:owner/repo',
+    host: 'github.com',
+    owner: 'owner',
+    repo: 'repo',
+    cloneUrl: 'https://github.com/owner/repo.git',
+    defaultRemoteName: 'origin',
+    updateStrategy: 'hard-reset',
+    submodules: 'none',
+    lfs: 'auto',
     managed: true,
     ...overrides,
   };
 }
 
-describe("createEmptyRegistry", () => {
-  it("creates registry with correct version", () => {
+describe('createEmptyRegistry', () => {
+  it('creates registry with correct version', () => {
     const registry = createEmptyRegistry();
 
-    expect(registry.version).toBe("1.0.0");
+    expect(registry.version).toBe('1.0.0');
     expect(registry.repos).toEqual([]);
     expect(registry.tombstones).toEqual([]);
   });
 });
 
-describe("findEntry", () => {
-  it("finds entry by ID", () => {
+describe('findEntry', () => {
+  it('finds entry by ID', () => {
     const entry = createTestEntry();
     const registry: Registry = {
-      version: "1.0.0",
+      version: '1.0.0',
       repos: [entry],
       tombstones: [],
     };
 
-    const found = findEntry(registry, "github.com:owner/repo");
+    const found = findEntry(registry, 'github.com:owner/repo');
 
     expect(found).toBe(entry);
   });
 
-  it("returns undefined for unknown ID", () => {
+  it('returns undefined for unknown ID', () => {
     const registry = createEmptyRegistry();
 
-    const found = findEntry(registry, "github.com:unknown/repo");
+    const found = findEntry(registry, 'github.com:unknown/repo');
 
     expect(found).toBeUndefined();
   });
 });
 
-describe("findEntryByOwnerRepo", () => {
-  it("finds entry by owner and repo", () => {
+describe('findEntryByOwnerRepo', () => {
+  it('finds entry by owner and repo', () => {
     const entry = createTestEntry();
     const registry: Registry = {
-      version: "1.0.0",
+      version: '1.0.0',
       repos: [entry],
       tombstones: [],
     };
 
-    const found = findEntryByOwnerRepo(registry, "owner", "repo");
+    const found = findEntryByOwnerRepo(registry, 'owner', 'repo');
 
     expect(found).toBe(entry);
   });
 
-  it("returns undefined for unknown owner/repo", () => {
+  it('returns undefined for unknown owner/repo', () => {
     const registry = createEmptyRegistry();
 
-    const found = findEntryByOwnerRepo(registry, "unknown", "repo");
+    const found = findEntryByOwnerRepo(registry, 'unknown', 'repo');
 
     expect(found).toBeUndefined();
   });
 });
 
-describe("addEntry", () => {
-  it("adds entry to empty registry", () => {
+describe('addEntry', () => {
+  it('adds entry to empty registry', () => {
     const registry = createEmptyRegistry();
     const entry = createTestEntry();
 
@@ -96,20 +96,18 @@ describe("addEntry", () => {
     expect(updated.repos[0]).toBe(entry);
   });
 
-  it("throws when entry with same ID exists", () => {
+  it('throws when entry with same ID exists', () => {
     const entry = createTestEntry();
     const registry: Registry = {
-      version: "1.0.0",
+      version: '1.0.0',
       repos: [entry],
       tombstones: [],
     };
 
-    expect(() => addEntry(registry, entry)).toThrow(
-      "Repository already exists in registry"
-    );
+    expect(() => addEntry(registry, entry)).toThrow('Repository already exists in registry');
   });
 
-  it("does not mutate original registry", () => {
+  it('does not mutate original registry', () => {
     const registry = createEmptyRegistry();
     const entry = createTestEntry();
 
@@ -120,54 +118,54 @@ describe("addEntry", () => {
   });
 });
 
-describe("updateEntry", () => {
-  it("updates entry fields", () => {
+describe('updateEntry', () => {
+  it('updates entry fields', () => {
     const entry = createTestEntry();
     const registry: Registry = {
-      version: "1.0.0",
+      version: '1.0.0',
       repos: [entry],
       tombstones: [],
     };
 
     const updated = updateEntry(registry, entry.id, {
-      description: "Updated description",
-      tags: ["new", "tags"],
+      description: 'Updated description',
+      tags: ['new', 'tags'],
     });
 
-    expect(updated.repos[0].description).toBe("Updated description");
-    expect(updated.repos[0].tags).toEqual(["new", "tags"]);
+    expect(updated.repos[0].description).toBe('Updated description');
+    expect(updated.repos[0].tags).toEqual(['new', 'tags']);
   });
 
-  it("throws for unknown ID", () => {
+  it('throws for unknown ID', () => {
     const registry = createEmptyRegistry();
 
-    expect(() =>
-      updateEntry(registry, "unknown:id", { description: "test" })
-    ).toThrow("Repository not found in registry");
+    expect(() => updateEntry(registry, 'unknown:id', { description: 'test' })).toThrow(
+      'Repository not found in registry'
+    );
   });
 
-  it("does not mutate original registry", () => {
-    const entry = createTestEntry({ description: "original" });
+  it('does not mutate original registry', () => {
+    const entry = createTestEntry({ description: 'original' });
     const registry: Registry = {
-      version: "1.0.0",
+      version: '1.0.0',
       repos: [entry],
       tombstones: [],
     };
 
     const updated = updateEntry(registry, entry.id, {
-      description: "updated",
+      description: 'updated',
     });
 
-    expect(registry.repos[0].description).toBe("original");
-    expect(updated.repos[0].description).toBe("updated");
+    expect(registry.repos[0].description).toBe('original');
+    expect(updated.repos[0].description).toBe('updated');
   });
 });
 
-describe("removeEntry", () => {
-  it("removes entry by ID", () => {
+describe('removeEntry', () => {
+  it('removes entry by ID', () => {
     const entry = createTestEntry();
     const registry: Registry = {
-      version: "1.0.0",
+      version: '1.0.0',
       repos: [entry],
       tombstones: [],
     };
@@ -177,67 +175,65 @@ describe("removeEntry", () => {
     expect(updated.repos).toHaveLength(0);
   });
 
-  it("throws for unknown ID", () => {
+  it('throws for unknown ID', () => {
     const registry = createEmptyRegistry();
 
-    expect(() => removeEntry(registry, "unknown:id")).toThrow(
-      "Repository not found in registry"
-    );
+    expect(() => removeEntry(registry, 'unknown:id')).toThrow('Repository not found in registry');
   });
 });
 
-describe("tombstones", () => {
-  it("adds tombstone once", () => {
+describe('tombstones', () => {
+  it('adds tombstone once', () => {
     const registry = createEmptyRegistry();
-    const updated = addTombstone(registry, "github.com:owner/repo");
+    const updated = addTombstone(registry, 'github.com:owner/repo');
 
-    expect(updated.tombstones).toEqual(["github.com:owner/repo"]);
-    expect(addTombstone(updated, "github.com:owner/repo").tombstones).toEqual([
-      "github.com:owner/repo",
+    expect(updated.tombstones).toEqual(['github.com:owner/repo']);
+    expect(addTombstone(updated, 'github.com:owner/repo').tombstones).toEqual([
+      'github.com:owner/repo',
     ]);
   });
 
-  it("removes tombstone", () => {
+  it('removes tombstone', () => {
     const registry: Registry = {
-      version: "1.0.0",
+      version: '1.0.0',
       repos: [],
-      tombstones: ["github.com:owner/repo"],
+      tombstones: ['github.com:owner/repo'],
     };
 
-    const updated = removeTombstone(registry, "github.com:owner/repo");
+    const updated = removeTombstone(registry, 'github.com:owner/repo');
     expect(updated.tombstones).toEqual([]);
   });
 });
 
-describe("filterByTags", () => {
+describe('filterByTags', () => {
   let registry: Registry;
 
   beforeEach(() => {
     registry = {
-      version: "1.0.0",
+      version: '1.0.0',
       repos: [
         createTestEntry({
-          id: "github.com:a/repo1",
-          owner: "a",
-          repo: "repo1",
-          tags: ["cli", "typescript"],
+          id: 'github.com:a/repo1',
+          owner: 'a',
+          repo: 'repo1',
+          tags: ['cli', 'typescript'],
         }),
         createTestEntry({
-          id: "github.com:b/repo2",
-          owner: "b",
-          repo: "repo2",
-          tags: ["web", "typescript"],
+          id: 'github.com:b/repo2',
+          owner: 'b',
+          repo: 'repo2',
+          tags: ['web', 'typescript'],
         }),
         createTestEntry({
-          id: "github.com:c/repo3",
-          owner: "c",
-          repo: "repo3",
-          tags: ["cli"],
+          id: 'github.com:c/repo3',
+          owner: 'c',
+          repo: 'repo3',
+          tags: ['cli'],
         }),
         createTestEntry({
-          id: "github.com:d/repo4",
-          owner: "d",
-          repo: "repo4",
+          id: 'github.com:d/repo4',
+          owner: 'd',
+          repo: 'repo4',
           // no tags
         }),
       ],
@@ -245,89 +241,89 @@ describe("filterByTags", () => {
     };
   });
 
-  it("filters by single tag", () => {
-    const filtered = filterByTags(registry, ["cli"]);
+  it('filters by single tag', () => {
+    const filtered = filterByTags(registry, ['cli']);
 
     expect(filtered).toHaveLength(2);
-    expect(filtered.map((e) => e.repo)).toEqual(["repo1", "repo3"]);
+    expect(filtered.map((e) => e.repo)).toEqual(['repo1', 'repo3']);
   });
 
-  it("filters by multiple tags (OR logic)", () => {
-    const filtered = filterByTags(registry, ["cli", "web"]);
+  it('filters by multiple tags (OR logic)', () => {
+    const filtered = filterByTags(registry, ['cli', 'web']);
 
     expect(filtered).toHaveLength(3);
-    expect(filtered.map((e) => e.repo)).toEqual(["repo1", "repo2", "repo3"]);
+    expect(filtered.map((e) => e.repo)).toEqual(['repo1', 'repo2', 'repo3']);
   });
 
-  it("returns all repos for empty tags array", () => {
+  it('returns all repos for empty tags array', () => {
     const filtered = filterByTags(registry, []);
 
     expect(filtered).toHaveLength(4);
   });
 
-  it("returns empty array when no repos match", () => {
-    const filtered = filterByTags(registry, ["nonexistent"]);
+  it('returns empty array when no repos match', () => {
+    const filtered = filterByTags(registry, ['nonexistent']);
 
     expect(filtered).toHaveLength(0);
   });
 });
 
-describe("filterByPattern", () => {
+describe('filterByPattern', () => {
   let registry: Registry;
 
   beforeEach(() => {
     registry = {
-      version: "1.0.0",
+      version: '1.0.0',
       repos: [
         createTestEntry({
-          id: "github.com:owner1/repo-a",
-          owner: "owner1",
-          repo: "repo-a",
+          id: 'github.com:owner1/repo-a',
+          owner: 'owner1',
+          repo: 'repo-a',
         }),
         createTestEntry({
-          id: "github.com:owner1/repo-b",
-          owner: "owner1",
-          repo: "repo-b",
+          id: 'github.com:owner1/repo-b',
+          owner: 'owner1',
+          repo: 'repo-b',
         }),
         createTestEntry({
-          id: "github.com:owner2/repo-a",
-          owner: "owner2",
-          repo: "repo-a",
+          id: 'github.com:owner2/repo-a',
+          owner: 'owner2',
+          repo: 'repo-a',
         }),
       ],
       tombstones: [],
     };
   });
 
-  it("filters by exact owner/repo", () => {
-    const filtered = filterByPattern(registry, "owner1/repo-a");
+  it('filters by exact owner/repo', () => {
+    const filtered = filterByPattern(registry, 'owner1/repo-a');
 
     expect(filtered).toHaveLength(1);
-    expect(filtered[0].id).toBe("github.com:owner1/repo-a");
+    expect(filtered[0].id).toBe('github.com:owner1/repo-a');
   });
 
-  it("filters by owner/* wildcard", () => {
-    const filtered = filterByPattern(registry, "owner1/*");
+  it('filters by owner/* wildcard', () => {
+    const filtered = filterByPattern(registry, 'owner1/*');
 
     expect(filtered).toHaveLength(2);
-    expect(filtered.map((e) => e.repo)).toEqual(["repo-a", "repo-b"]);
+    expect(filtered.map((e) => e.repo)).toEqual(['repo-a', 'repo-b']);
   });
 
-  it("filters by */repo wildcard", () => {
-    const filtered = filterByPattern(registry, "*/repo-a");
+  it('filters by */repo wildcard', () => {
+    const filtered = filterByPattern(registry, '*/repo-a');
 
     expect(filtered).toHaveLength(2);
-    expect(filtered.map((e) => e.owner)).toEqual(["owner1", "owner2"]);
+    expect(filtered.map((e) => e.owner)).toEqual(['owner1', 'owner2']);
   });
 
-  it("filters by owner only", () => {
-    const filtered = filterByPattern(registry, "owner1");
+  it('filters by owner only', () => {
+    const filtered = filterByPattern(registry, 'owner1');
 
     expect(filtered).toHaveLength(2);
   });
 
-  it("returns empty for no match", () => {
-    const filtered = filterByPattern(registry, "unknown/repo");
+  it('returns empty for no match', () => {
+    const filtered = filterByPattern(registry, 'unknown/repo');
 
     expect(filtered).toHaveLength(0);
   });

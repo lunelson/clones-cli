@@ -8,13 +8,13 @@
  * Can be removed once @clack/prompts publishes autocompleteMultiselect.
  */
 
-import { stdin, stdout } from "node:process";
-import readline, { type Key, type ReadLine } from "node:readline";
-import type { Readable, Writable } from "node:stream";
-import { wrapAnsi } from "fast-wrap-ansi";
-import { cursor, erase } from "sisteransi";
-import color from "picocolors";
-import isUnicodeSupported from "is-unicode-supported";
+import { stdin, stdout } from 'node:process';
+import readline, { type Key, type ReadLine } from 'node:readline';
+import type { Readable, Writable } from 'node:stream';
+import { wrapAnsi } from 'fast-wrap-ansi';
+import { cursor, erase } from 'sisteransi';
+import color from 'picocolors';
+import isUnicodeSupported from 'is-unicode-supported';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants and Symbols
@@ -23,29 +23,29 @@ import isUnicodeSupported from "is-unicode-supported";
 const unicode = isUnicodeSupported();
 const unicodeOr = (c: string, fallback: string) => (unicode ? c : fallback);
 
-const S_STEP_ACTIVE = unicodeOr("◆", "*");
-const S_STEP_CANCEL = unicodeOr("■", "x");
-const S_STEP_ERROR = unicodeOr("▲", "x");
-const S_STEP_SUBMIT = unicodeOr("◇", "o");
-const S_BAR = unicodeOr("│", "|");
-const S_BAR_END = unicodeOr("└", "—");
-const S_CHECKBOX_SELECTED = unicodeOr("◼", "[+]");
-const S_CHECKBOX_INACTIVE = unicodeOr("◻", "[ ]");
+const S_STEP_ACTIVE = unicodeOr('◆', '*');
+const S_STEP_CANCEL = unicodeOr('■', 'x');
+const S_STEP_ERROR = unicodeOr('▲', 'x');
+const S_STEP_SUBMIT = unicodeOr('◇', 'o');
+const S_BAR = unicodeOr('│', '|');
+const S_BAR_END = unicodeOr('└', '—');
+const S_CHECKBOX_SELECTED = unicodeOr('◼', '[+]');
+const S_CHECKBOX_INACTIVE = unicodeOr('◻', '[ ]');
 
-const CANCEL_SYMBOL = Symbol("clack:cancel");
+const CANCEL_SYMBOL = Symbol('clack:cancel');
 
-type ClackState = "initial" | "active" | "cancel" | "submit" | "error";
+type ClackState = 'initial' | 'active' | 'cancel' | 'submit' | 'error';
 
 const symbol = (state: ClackState) => {
   switch (state) {
-    case "initial":
-    case "active":
+    case 'initial':
+    case 'active':
       return color.cyan(S_STEP_ACTIVE);
-    case "cancel":
+    case 'cancel':
       return color.red(S_STEP_CANCEL);
-    case "error":
+    case 'error':
       return color.yellow(S_STEP_ERROR);
-    case "submit":
+    case 'submit':
       return color.green(S_STEP_SUBMIT);
   }
 };
@@ -60,22 +60,22 @@ function setRawMode(input: Readable, value: boolean) {
 }
 
 const getColumns = (output: Writable): number => {
-  if ("columns" in output && typeof output.columns === "number") {
+  if ('columns' in output && typeof output.columns === 'number') {
     return output.columns;
   }
   return 80;
 };
 
 const getRows = (output: Writable): number => {
-  if ("rows" in output && typeof output.rows === "number") {
+  if ('rows' in output && typeof output.rows === 'number') {
     return output.rows;
   }
   return 20;
 };
 
 function diffLines(prev: string, next: string) {
-  const prevLines = prev.split("\n");
-  const nextLines = next.split("\n");
+  const prevLines = prev.split('\n');
+  const nextLines = next.split('\n');
   const lines: number[] = [];
 
   for (let i = 0; i < Math.max(prevLines.length, nextLines.length); i++) {
@@ -127,9 +127,7 @@ const trimLines = (
   return { lineCount, removals };
 };
 
-const limitOptions = <TOption>(
-  params: LimitOptionsParams<TOption>
-): string[] => {
+const limitOptions = <TOption>(params: LimitOptionsParams<TOption>): string[] => {
   const { cursor, options, style } = params;
   const output: Writable = params.output ?? stdout;
   const columns = getColumns(output);
@@ -137,7 +135,7 @@ const limitOptions = <TOption>(
   const rowPadding = params.rowPadding ?? 4;
   const maxWidth = columns - columnPadding;
   const rows = getRows(output);
-  const overflowFormat = color.dim("...");
+  const overflowFormat = color.dim('...');
 
   const paramMaxItems = params.maxItems ?? Number.POSITIVE_INFINITY;
   const outputMaxItems = Math.max(rows - rowPadding, 0);
@@ -145,22 +143,14 @@ const limitOptions = <TOption>(
   let slidingWindowLocation = 0;
 
   if (cursor >= maxItems - 3) {
-    slidingWindowLocation = Math.max(
-      Math.min(cursor - maxItems + 3, options.length - maxItems),
-      0
-    );
+    slidingWindowLocation = Math.max(Math.min(cursor - maxItems + 3, options.length - maxItems), 0);
   }
 
-  let shouldRenderTopEllipsis =
-    maxItems < options.length && slidingWindowLocation > 0;
+  let shouldRenderTopEllipsis = maxItems < options.length && slidingWindowLocation > 0;
   let shouldRenderBottomEllipsis =
-    maxItems < options.length &&
-    slidingWindowLocation + maxItems < options.length;
+    maxItems < options.length && slidingWindowLocation + maxItems < options.length;
 
-  const slidingWindowLocationEnd = Math.min(
-    slidingWindowLocation + maxItems,
-    options.length
-  );
+  const slidingWindowLocationEnd = Math.min(slidingWindowLocation + maxItems, options.length);
   const lineGroups: Array<string[]> = [];
   let lineCount = 0;
   if (shouldRenderTopEllipsis) lineCount++;
@@ -171,15 +161,11 @@ const limitOptions = <TOption>(
   const slidingWindowLocationEndWithEllipsis =
     slidingWindowLocationEnd - (shouldRenderBottomEllipsis ? 1 : 0);
 
-  for (
-    let i = slidingWindowLocationWithEllipsis;
-    i < slidingWindowLocationEndWithEllipsis;
-    i++
-  ) {
+  for (let i = slidingWindowLocationWithEllipsis; i < slidingWindowLocationEndWithEllipsis; i++) {
     const wrappedLines = wrapAnsi(style(options[i], i === cursor), maxWidth, {
       hard: true,
       trim: false,
-    }).split("\n");
+    }).split('\n');
     lineGroups.push(wrappedLines);
     lineCount += wrappedLines.length;
   }
@@ -193,18 +179,26 @@ const limitOptions = <TOption>(
       trimLines(lineGroups, newLineCount, startIndex, endIndex, outputMaxItems);
 
     if (shouldRenderTopEllipsis) {
-      ({ lineCount: newLineCount, removals: precedingRemovals } =
-        trimLinesLocal(0, cursorGroupIndex));
+      ({ lineCount: newLineCount, removals: precedingRemovals } = trimLinesLocal(
+        0,
+        cursorGroupIndex
+      ));
       if (newLineCount > outputMaxItems) {
-        ({ lineCount: newLineCount, removals: followingRemovals } =
-          trimLinesLocal(cursorGroupIndex + 1, lineGroups.length));
+        ({ lineCount: newLineCount, removals: followingRemovals } = trimLinesLocal(
+          cursorGroupIndex + 1,
+          lineGroups.length
+        ));
       }
     } else {
-      ({ lineCount: newLineCount, removals: followingRemovals } =
-        trimLinesLocal(cursorGroupIndex + 1, lineGroups.length));
+      ({ lineCount: newLineCount, removals: followingRemovals } = trimLinesLocal(
+        cursorGroupIndex + 1,
+        lineGroups.length
+      ));
       if (newLineCount > outputMaxItems) {
-        ({ lineCount: newLineCount, removals: precedingRemovals } =
-          trimLinesLocal(0, cursorGroupIndex));
+        ({ lineCount: newLineCount, removals: precedingRemovals } = trimLinesLocal(
+          0,
+          cursorGroupIndex
+        ));
       }
     }
 
@@ -263,17 +257,16 @@ class BasePrompt {
   private _abortSignal?: AbortSignal;
   private rl: ReadLine | undefined;
   private _render: () => string | undefined;
-  private _prevFrame = "";
-  private _subscribers = new Map<
-    string,
-    { cb: (...args: any) => any; once?: boolean }[]
-  >();
+  private _prevFrame = '';
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private _subscribers = new Map<string, { cb: (...args: any) => any; once?: boolean }[]>();
   protected _cursor = 0;
 
-  public state: ClackState = "initial";
-  public error = "";
+  public state: ClackState = 'initial';
+  public error = '';
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   public value: any;
-  public userInput = "";
+  public userInput = '';
 
   constructor(options: PromptOptions) {
     const { input = stdin, output = stdout, render, signal } = options;
@@ -290,23 +283,24 @@ class BasePrompt {
     this._subscribers.clear();
   }
 
-  private setSubscriber(
-    event: string,
-    opts: { cb: (...args: any) => any; once?: boolean }
-  ) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private setSubscriber(event: string, opts: { cb: (...args: any) => any; once?: boolean }) {
     const params = this._subscribers.get(event) ?? [];
     params.push(opts);
     this._subscribers.set(event, params);
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   public on(event: string, cb: (...args: any) => any) {
     this.setSubscriber(event, { cb });
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   public once(event: string, cb: (...args: any) => any) {
     this.setSubscriber(event, { cb, once: true });
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   public emit(event: string, ...data: any[]) {
     const cbs = this._subscribers.get(event) ?? [];
     const cleanup: (() => void)[] = [];
@@ -323,19 +317,20 @@ class BasePrompt {
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   public prompt(): Promise<any | symbol> {
     return new Promise((resolve) => {
       if (this._abortSignal) {
         if (this._abortSignal.aborted) {
-          this.state = "cancel";
+          this.state = 'cancel';
           this.close();
           return resolve(CANCEL_SYMBOL);
         }
 
         this._abortSignal.addEventListener(
-          "abort",
+          'abort',
           () => {
-            this.state = "cancel";
+            this.state = 'cancel';
             this.close();
           },
           { once: true }
@@ -345,27 +340,27 @@ class BasePrompt {
       this.rl = readline.createInterface({
         input: this.input,
         tabSize: 2,
-        prompt: "",
+        prompt: '',
         escapeCodeTimeout: 50,
         terminal: true,
       });
       this.rl.prompt();
 
-      this.input.on("keypress", this.onKeypress);
+      this.input.on('keypress', this.onKeypress);
       setRawMode(this.input, true);
-      this.output.on("resize", this.render);
+      this.output.on('resize', this.render);
 
       this.render();
 
-      this.once("submit", () => {
+      this.once('submit', () => {
         this.output.write(cursor.show);
-        this.output.off("resize", this.render);
+        this.output.off('resize', this.render);
         setRawMode(this.input, false);
         resolve(this.value);
       });
-      this.once("cancel", () => {
+      this.once('cancel', () => {
         this.output.write(cursor.show);
-        this.output.off("resize", this.render);
+        this.output.off('resize', this.render);
         setRawMode(this.input, false);
         resolve(CANCEL_SYMBOL);
       });
@@ -373,60 +368,49 @@ class BasePrompt {
   }
 
   protected _isActionKey(char: string | undefined, key: Key): boolean {
-    return (
-      char === "\t" ||
-      (key.name === "space" && char !== undefined && char !== "")
-    );
+    return char === '\t' || (key.name === 'space' && char !== undefined && char !== '');
   }
 
   private onKeypress(char: string | undefined, key: Key) {
     // Track user input for text-based filtering
-    if (key.name !== "return" && !this._isActionKey(char, key)) {
-      if (key.name === "backspace") {
+    if (key.name !== 'return' && !this._isActionKey(char, key)) {
+      if (key.name === 'backspace') {
         this.userInput = this.userInput.slice(0, -1);
-      } else if (
-        char &&
-        !key.ctrl &&
-        !key.meta &&
-        key.name !== "up" &&
-        key.name !== "down"
-      ) {
+      } else if (char && !key.ctrl && !key.meta && key.name !== 'up' && key.name !== 'down') {
         this.userInput += char;
       }
       this._cursor = this.userInput.length;
-      this.emit("userInput", this.userInput);
+      this.emit('userInput', this.userInput);
     }
 
-    if (this.state === "error") {
-      this.state = "active";
+    if (this.state === 'error') {
+      this.state = 'active';
     }
 
-    this.emit("key", char?.toLowerCase(), key);
+    this.emit('key', char?.toLowerCase(), key);
 
-    if (key?.name === "return") {
-      this.state = "submit";
+    if (key?.name === 'return') {
+      this.state = 'submit';
     }
 
-    const isCancel =
-      (key.ctrl && key.name === "c") ||
-      key.name === "escape";
+    const isCancel = (key.ctrl && key.name === 'c') || key.name === 'escape';
     if (isCancel) {
-      this.state = "cancel";
+      this.state = 'cancel';
     }
 
-    if (this.state === "submit" || this.state === "cancel") {
-      this.emit("finalize");
+    if (this.state === 'submit' || this.state === 'cancel') {
+      this.emit('finalize');
     }
     this.render();
-    if (this.state === "submit" || this.state === "cancel") {
+    if (this.state === 'submit' || this.state === 'cancel') {
       this.close();
     }
   }
 
   protected close() {
     this.input.unpipe();
-    this.input.removeListener("keypress", this.onKeypress);
-    this.output.write("\n");
+    this.input.removeListener('keypress', this.onKeypress);
+    this.output.write('\n');
     setRawMode(this.input, false);
     this.rl?.close();
     this.rl = undefined;
@@ -439,18 +423,18 @@ class BasePrompt {
       wrapAnsi(this._prevFrame, process.stdout.columns, {
         hard: true,
         trim: false,
-      }).split("\n").length - 1;
+      }).split('\n').length - 1;
     this.output.write(cursor.move(-999, lines * -1));
   }
 
   private render() {
-    const frame = wrapAnsi(this._render() ?? "", process.stdout.columns, {
+    const frame = wrapAnsi(this._render() ?? '', process.stdout.columns, {
       hard: true,
       trim: false,
     });
     if (frame === this._prevFrame) return;
 
-    if (this.state === "initial") {
+    if (this.state === 'initial') {
       this.output.write(cursor.hide);
     } else {
       const diff = diffLines(this._prevFrame, frame);
@@ -469,7 +453,7 @@ class BasePrompt {
         if (diff.lines.length === 1) {
           this.output.write(cursor.move(0, diffLine - diffOffsetBefore));
           this.output.write(erase.lines(1));
-          const lines = frame.split("\n");
+          const lines = frame.split('\n');
           this.output.write(lines[diffLine]);
           this._prevFrame = frame;
           this.output.write(cursor.move(0, lines.length - diffLine - 1));
@@ -484,9 +468,9 @@ class BasePrompt {
             }
           }
           this.output.write(erase.down());
-          const lines = frame.split("\n");
+          const lines = frame.split('\n');
           const newLines = lines.slice(diffLine);
-          this.output.write(newLines.join("\n"));
+          this.output.write(newLines.join('\n'));
           this._prevFrame = frame;
           return;
         }
@@ -496,8 +480,8 @@ class BasePrompt {
     }
 
     this.output.write(frame);
-    if (this.state === "initial") {
-      this.state = "active";
+    if (this.state === 'initial') {
+      this.state = 'active';
     }
     this._prevFrame = frame;
   }
@@ -521,13 +505,14 @@ export interface AutocompleteMultiSelectOptions<Value> {
 }
 
 function getLabel<T>(option: Option<T>) {
-  return option.label ?? String(option.value ?? "");
+  return option.label ?? String(option.value ?? '');
 }
+void getLabel; // exported but currently unused, suppress lint
 
 function getFilteredOption<T>(searchText: string, option: Option<T>): boolean {
   if (!searchText) return true;
-  const label = (option.label ?? String(option.value ?? "")).toLowerCase();
-  const hint = (option.hint ?? "").toLowerCase();
+  const label = (option.label ?? String(option.value ?? '')).toLowerCase();
+  const hint = (option.hint ?? '').toLowerCase();
   const value = String(option.value).toLowerCase();
   const term = searchText.toLowerCase();
   return label.includes(term) || hint.includes(term) || value.includes(term);
@@ -543,17 +528,11 @@ export const autocompleteMultiselect = <Value>(
   let isNavigating = false;
   const filterFn = opts.filter ?? getFilteredOption;
 
-  const formatOption = (
-    option: Option<Value>,
-    active: boolean
-  ) => {
+  const formatOption = (option: Option<Value>, active: boolean) => {
     const isSelected = selectedValues.includes(option.value);
-    const label = option.label ?? String(option.value ?? "");
-    const hint =
-      option.hint && active ? color.dim(` (${option.hint})`) : "";
-    const checkbox = isSelected
-      ? color.green(S_CHECKBOX_SELECTED)
-      : color.dim(S_CHECKBOX_INACTIVE);
+    const label = option.label ?? String(option.value ?? '');
+    const hint = option.hint && active ? color.dim(` (${option.hint})`) : '';
+    const checkbox = isSelected ? color.green(S_CHECKBOX_SELECTED) : color.dim(S_CHECKBOX_INACTIVE);
 
     if (active) {
       return `${checkbox} ${label}${hint}`;
@@ -562,11 +541,11 @@ export const autocompleteMultiselect = <Value>(
   };
 
   const prompt = new BasePrompt({
-    render() {
+    render(this: BasePrompt) {
       const title = `${color.gray(S_BAR)}\n${symbol(this.state)}  ${opts.message}\n`;
       const userInput = this.userInput;
       const placeholder = opts.placeholder;
-      const showPlaceholder = userInput === "" && placeholder !== undefined;
+      const showPlaceholder = userInput === '' && placeholder !== undefined;
 
       // Update filtered options based on search
       if (userInput) {
@@ -580,56 +559,52 @@ export const autocompleteMultiselect = <Value>(
         cursor = Math.max(0, filteredOptions.length - 1);
       }
 
-      const focusedValue = filteredOptions[cursor]?.value;
-
       // Search input display
       const searchText =
         isNavigating || showPlaceholder
           ? color.dim(showPlaceholder ? placeholder : userInput)
-          : userInput + "█";
+          : userInput + '█';
 
       const matches =
         filteredOptions.length !== allOptions.length
           ? color.dim(
-              ` (${filteredOptions.length} match${filteredOptions.length === 1 ? "" : "es"})`
+              ` (${filteredOptions.length} match${filteredOptions.length === 1 ? '' : 'es'})`
             )
-          : "";
+          : '';
 
       switch (this.state) {
-        case "submit": {
+        case 'submit': {
           return `${title}${color.gray(S_BAR)}  ${color.dim(`${selectedValues.length} items selected`)}`;
         }
-        case "cancel": {
+        case 'cancel': {
           return `${title}${color.gray(S_BAR)}  ${color.strikethrough(color.dim(userInput))}`;
         }
         default: {
-          const barColor = this.state === "error" ? color.yellow : color.cyan;
+          const barColor = this.state === 'error' ? color.yellow : color.cyan;
 
           const instructions = [
-            `${color.dim("↑/↓")} navigate`,
-            `${color.dim(isNavigating ? "Space/Tab:" : "Tab:")} select`,
-            `${color.dim("Enter:")} confirm`,
-            `${color.dim("Type:")} search`,
+            `${color.dim('↑/↓')} navigate`,
+            `${color.dim(isNavigating ? 'Space/Tab:' : 'Tab:')} select`,
+            `${color.dim('Enter:')} confirm`,
+            `${color.dim('Type:')} search`,
           ];
 
           const noResults =
             filteredOptions.length === 0 && userInput
-              ? [`${barColor(S_BAR)}  ${color.yellow("No matches found")}`]
+              ? [`${barColor(S_BAR)}  ${color.yellow('No matches found')}`]
               : [];
 
           const errorMessage =
-            this.state === "error"
-              ? [`${barColor(S_BAR)}  ${color.yellow(this.error)}`]
-              : [];
+            this.state === 'error' ? [`${barColor(S_BAR)}  ${color.yellow(this.error)}`] : [];
 
           const headerLines = [
-            ...`${title}${barColor(S_BAR)}`.split("\n"),
-            `${barColor(S_BAR)}  ${color.dim("Search:")} ${searchText}${matches}`,
+            ...`${title}${barColor(S_BAR)}`.split('\n'),
+            `${barColor(S_BAR)}  ${color.dim('Search:')} ${searchText}${matches}`,
             ...noResults,
             ...errorMessage,
           ];
           const footerLines = [
-            `${barColor(S_BAR)}  ${color.dim(instructions.join(" • "))}`,
+            `${barColor(S_BAR)}  ${color.dim(instructions.join(' • '))}`,
             `${barColor(S_BAR_END)}`,
           ];
 
@@ -645,24 +620,21 @@ export const autocompleteMultiselect = <Value>(
             ...headerLines,
             ...displayOptions.map((option) => `${barColor(S_BAR)}  ${option}`),
             ...footerLines,
-          ].join("\n");
+          ].join('\n');
         }
       }
     },
   });
 
   // Handle navigation and selection
-  prompt.on("key", (char: string | undefined, key: Key) => {
-    const isUpKey = key.name === "up";
-    const isDownKey = key.name === "down";
+  prompt.on('key', (char: string | undefined, key: Key) => {
+    const isUpKey = key.name === 'up';
+    const isDownKey = key.name === 'down';
 
     if (isUpKey || isDownKey) {
-      cursor = Math.max(
-        0,
-        Math.min(cursor + (isUpKey ? -1 : 1), filteredOptions.length - 1)
-      );
+      cursor = Math.max(0, Math.min(cursor + (isUpKey ? -1 : 1), filteredOptions.length - 1));
       isNavigating = true;
-    } else if (key.name === "tab" || (isNavigating && key.name === "space")) {
+    } else if (key.name === 'tab' || (isNavigating && key.name === 'space')) {
       // Toggle selection
       const focusedValue = filteredOptions[cursor]?.value;
       if (focusedValue !== undefined) {
@@ -672,14 +644,14 @@ export const autocompleteMultiselect = <Value>(
           selectedValues = [...selectedValues, focusedValue];
         }
       }
-    } else if (key.name !== "return" && key.name !== "escape" && !key.ctrl) {
+    } else if (key.name !== 'return' && key.name !== 'escape' && !key.ctrl) {
       isNavigating = false;
     }
 
-    if (key.name === "return") {
+    if (key.name === 'return') {
       if (opts.required && selectedValues.length === 0) {
-        prompt.state = "error";
-        prompt.error = "Please select at least one item";
+        prompt.state = 'error';
+        prompt.error = 'Please select at least one item';
       } else {
         prompt.value = selectedValues;
       }

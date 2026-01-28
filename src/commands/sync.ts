@@ -1,8 +1,8 @@
-import { defineCommand } from "citty";
-import * as p from "@clack/prompts";
-import { existsSync } from "node:fs";
-import { rm } from "node:fs/promises";
-import { join } from "node:path";
+import { defineCommand } from 'citty';
+import * as p from '@clack/prompts';
+import { existsSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
+import { join } from 'node:path';
 import {
   readRegistry,
   writeRegistry,
@@ -10,13 +10,13 @@ import {
   addEntry,
   filterByPattern,
   findEntry,
-} from "../lib/registry.js";
+} from '../lib/registry.js';
 import {
   readLocalState,
   writeLocalState,
   updateRepoLocalState,
   updateLastSyncRun,
-} from "../lib/local-state.js";
+} from '../lib/local-state.js';
 import {
   fetchWithPrune,
   resetHard,
@@ -27,55 +27,55 @@ import {
   pullLfs,
   cloneRepo,
   getRemoteUrl,
-} from "../lib/git.js";
-import { getRepoPath, getClonesDir, DEFAULTS } from "../lib/config.js";
-import { scanClonesDir, isNestedRepo } from "../lib/scan.js";
-import { parseGitUrl, generateRepoId } from "../lib/url-parser.js";
-import { fetchGitHubMetadata } from "../lib/github.js";
-import type { RegistryEntry, UpdateResult, Registry, LocalState } from "../types/index.js";
+} from '../lib/git.js';
+import { getRepoPath, getClonesDir, DEFAULTS } from '../lib/config.js';
+import { scanClonesDir, isNestedRepo } from '../lib/scan.js';
+import { parseGitUrl, generateRepoId } from '../lib/url-parser.js';
+import { fetchGitHubMetadata } from '../lib/github.js';
+import type { RegistryEntry, UpdateResult, Registry } from '../types/index.js';
 
 interface UpdateSummary {
   name: string;
-  action: "adopted" | "removed" | "cloned" | "updated" | "skipped" | "refreshed" | "error";
+  action: 'adopted' | 'removed' | 'cloned' | 'updated' | 'skipped' | 'refreshed' | 'error';
   detail?: string;
 }
 
 export default defineCommand({
   meta: {
-    name: "sync",
-    description: "Synchronize registry and clones (adopt, clone missing, fetch/reset)",
+    name: 'sync',
+    description: 'Synchronize registry and clones (adopt, clone missing, fetch/reset)',
   },
   args: {
     filter: {
-      type: "string",
-      description: "Filter by owner/repo pattern (supports wildcards)",
+      type: 'string',
+      description: 'Filter by owner/repo pattern (supports wildcards)',
     },
-    "dry-run": {
-      type: "boolean",
-      description: "Show what would happen without making changes",
+    'dry-run': {
+      type: 'boolean',
+      description: 'Show what would happen without making changes',
     },
     force: {
-      type: "boolean",
-      description: "Proceed even if working tree is dirty",
+      type: 'boolean',
+      description: 'Proceed even if working tree is dirty',
     },
     keep: {
-      type: "boolean",
-      description: "Keep tombstoned repos on disk (do not delete)",
+      type: 'boolean',
+      description: 'Keep tombstoned repos on disk (do not delete)',
     },
     refresh: {
-      type: "boolean",
-      description: "Refresh metadata (description, tags) from GitHub for all repos",
+      type: 'boolean',
+      description: 'Refresh metadata (description, tags) from GitHub for all repos',
     },
   },
   async run({ args }) {
-    p.intro("clones sync");
+    p.intro('clones sync');
 
-    const dryRun = args["dry-run"] || false;
+    const dryRun = args['dry-run'] || false;
     const force = args.force || false;
     const keep = args.keep || false;
 
     if (dryRun) {
-      p.log.warn("Dry run mode - no changes will be made");
+      p.log.warn('Dry run mode - no changes will be made');
     }
 
     let registry = await readRegistry();
@@ -85,45 +85,46 @@ export default defineCommand({
     // ═══════════════════════════════════════════════════════════════════
     // PHASE 1: ADOPT - Discover untracked repos on disk
     // ═══════════════════════════════════════════════════════════════════
-    p.log.step("Phase 1: Discovering untracked repos...");
+    p.log.step('Phase 1: Discovering untracked repos...');
 
-    const { adopted, removed, skipped: adoptSkipped, registry: registryAfterAdopt } =
-      await adoptPhase(
-      registry,
-      { dryRun, force, keep }
-    );
+    const {
+      adopted,
+      removed,
+      skipped: adoptSkipped,
+      registry: registryAfterAdopt,
+    } = await adoptPhase(registry, { dryRun, force, keep });
     registry = registryAfterAdopt;
 
     for (const repo of adopted) {
       summaries.push({
         name: `${repo.owner}/${repo.repo}`,
-        action: "adopted",
+        action: 'adopted',
       });
     }
 
     for (const repo of removed) {
       summaries.push({
         name: `${repo.owner}/${repo.repo}`,
-        action: "removed",
+        action: 'removed',
       });
     }
 
     for (const skipped of adoptSkipped) {
       summaries.push({
         name: `${skipped.owner}/${skipped.repo}`,
-        action: "skipped",
+        action: 'skipped',
         detail: skipped.reason,
       });
     }
 
     if (adopted.length === 0) {
-      p.log.info("  No untracked repos found");
+      p.log.info('  No untracked repos found');
     } else {
-      p.log.success(`  ${adopted.length} repo(s) ${dryRun ? "would be" : ""} adopted`);
+      p.log.success(`  ${adopted.length} repo(s) ${dryRun ? 'would be' : ''} adopted`);
     }
 
     if (removed.length > 0) {
-      p.log.success(`  ${removed.length} repo(s) ${dryRun ? "would be" : ""} removed`);
+      p.log.success(`  ${removed.length} repo(s) ${dryRun ? 'would be' : ''} removed`);
     }
 
     if (adoptSkipped.length > 0) {
@@ -133,30 +134,30 @@ export default defineCommand({
     // ═══════════════════════════════════════════════════════════════════
     // PHASE 2: CLONE - Clone repos in registry but missing from disk
     // ═══════════════════════════════════════════════════════════════════
-    p.log.step("Phase 2: Cloning missing repos...");
+    p.log.step('Phase 2: Cloning missing repos...');
 
     const { cloned, errors: cloneErrors } = await clonePhase(registry, { dryRun });
 
     for (const repo of cloned) {
       summaries.push({
         name: `${repo.owner}/${repo.repo}`,
-        action: "cloned",
+        action: 'cloned',
       });
     }
 
     for (const err of cloneErrors) {
       summaries.push({
         name: err.name,
-        action: "error",
+        action: 'error',
         detail: err.error,
       });
     }
 
     if (cloned.length === 0 && cloneErrors.length === 0) {
-      p.log.info("  No missing repos to clone");
+      p.log.info('  No missing repos to clone');
     } else {
       if (cloned.length > 0) {
-        p.log.success(`  ${cloned.length} repo(s) ${dryRun ? "would be" : ""} cloned`);
+        p.log.success(`  ${cloned.length} repo(s) ${dryRun ? 'would be' : ''} cloned`);
       }
       if (cloneErrors.length > 0) {
         p.log.error(`  ${cloneErrors.length} clone error(s)`);
@@ -166,7 +167,7 @@ export default defineCommand({
     // ═══════════════════════════════════════════════════════════════════
     // PHASE 3: UPDATE - Fetch and reset all tracked repos
     // ═══════════════════════════════════════════════════════════════════
-    p.log.step("Phase 3: Updating repos...");
+    p.log.step('Phase 3: Updating repos...');
 
     // Apply filter if specified
     let reposToUpdate = registry.repos.filter((r) => r.managed);
@@ -177,16 +178,16 @@ export default defineCommand({
     }
 
     if (reposToUpdate.length === 0) {
-      p.log.info("  No repos to update");
+      p.log.info('  No repos to update');
     } else {
       for (const entry of reposToUpdate) {
         const result = await updateRepo(entry, { dryRun, force });
         const name = `${entry.owner}/${entry.repo}`;
 
-        if (result.status === "updated") {
+        if (result.status === 'updated') {
           summaries.push({
             name,
-            action: "updated",
+            action: 'updated',
             detail: result.commits ? `${result.commits} commits` : undefined,
           });
 
@@ -196,16 +197,16 @@ export default defineCommand({
               lastSyncedAt: new Date().toISOString(),
             });
           }
-        } else if (result.status === "skipped") {
+        } else if (result.status === 'skipped') {
           summaries.push({
             name,
-            action: "skipped",
+            action: 'skipped',
             detail: result.reason,
           });
         } else {
           summaries.push({
             name,
-            action: "error",
+            action: 'error',
             detail: result.error,
           });
         }
@@ -216,19 +217,19 @@ export default defineCommand({
     // PHASE 4: REFRESH METADATA (optional)
     // ═══════════════════════════════════════════════════════════════════
     if (args.refresh) {
-      p.log.step("Phase 4: Refreshing metadata from GitHub...");
+      p.log.step('Phase 4: Refreshing metadata from GitHub...');
 
-      const githubRepos = registry.repos.filter((r) => r.host === "github.com");
+      const githubRepos = registry.repos.filter((r) => r.host === 'github.com');
 
       if (githubRepos.length === 0) {
-        p.log.info("  No GitHub repos to refresh");
+        p.log.info('  No GitHub repos to refresh');
       } else {
         for (const entry of githubRepos) {
           const name = `${entry.owner}/${entry.repo}`;
 
           if (dryRun) {
             p.log.info(`  ↻ ${name} (would refresh)`);
-            summaries.push({ name, action: "refreshed" });
+            summaries.push({ name, action: 'refreshed' });
             continue;
           }
 
@@ -248,7 +249,7 @@ export default defineCommand({
                 tags: newTags,
               });
               p.log.info(`  ↻ ${name} (refreshed)`);
-              summaries.push({ name, action: "refreshed" });
+              summaries.push({ name, action: 'refreshed' });
             } else {
               p.log.info(`  ○ ${name} (unchanged)`);
             }
@@ -272,7 +273,7 @@ export default defineCommand({
     console.log();
     printSummary(summaries, dryRun);
 
-    p.outro("Done!");
+    p.outro('Done!');
   },
 });
 
@@ -300,9 +301,7 @@ async function adoptPhase(
 
   for (const repo of discovered) {
     // Check if already in registry
-    const existing = registry.repos.find(
-      (e) => e.owner === repo.owner && e.repo === repo.repo
-    );
+    const existing = registry.repos.find((e) => e.owner === repo.owner && e.repo === repo.repo);
 
     if (existing) {
       continue; // Already tracked
@@ -331,14 +330,14 @@ async function adoptPhase(
 
     if (registry.tombstones.includes(repoId)) {
       if (options.keep) {
-        skipped.push({ owner: repo.owner, repo: repo.repo, reason: "tombstoned (--keep)" });
+        skipped.push({ owner: repo.owner, repo: repo.repo, reason: 'tombstoned (--keep)' });
         p.log.info(`  ○ ${repo.owner}/${repo.repo} (tombstoned, keeping)`);
         continue;
       }
 
       const status = await getRepoStatus(repo.localPath);
       if (status.isDirty && !options.force) {
-        skipped.push({ owner: repo.owner, repo: repo.repo, reason: "dirty working tree" });
+        skipped.push({ owner: repo.owner, repo: repo.repo, reason: 'dirty working tree' });
         p.log.warn(`  ○ ${repo.owner}/${repo.repo} (dirty, use --force)`);
         continue;
       }
@@ -375,7 +374,7 @@ async function adoptPhase(
       let description: string | undefined;
       let tags: string[] | undefined;
 
-      if (parsed.host === "github.com") {
+      if (parsed.host === 'github.com') {
         const metadata = await fetchGitHubMetadata(parsed.owner, parsed.repo);
         if (metadata) {
           description = metadata.description || undefined;
@@ -417,10 +416,7 @@ interface CloneResult {
   errors: { name: string; error: string }[];
 }
 
-async function clonePhase(
-  registry: Registry,
-  options: { dryRun: boolean }
-): Promise<CloneResult> {
+async function clonePhase(registry: Registry, options: { dryRun: boolean }): Promise<CloneResult> {
   const cloned: { owner: string; repo: string }[] = [];
   const errors: { name: string; error: string }[] = [];
 
@@ -494,32 +490,32 @@ async function updateRepo(
 
   if (!status.exists) {
     p.log.error(`  ✗ ${repoName} (missing)`);
-    return { status: "skipped", reason: "directory missing" };
+    return { status: 'skipped', reason: 'directory missing' };
   }
 
   if (!status.isGitRepo) {
     p.log.error(`  ✗ ${repoName} (not a git repo)`);
-    return { status: "skipped", reason: "not a git repo" };
+    return { status: 'skipped', reason: 'not a git repo' };
   }
 
   if (status.isDetached) {
     p.log.warn(`  ○ ${repoName} (detached HEAD)`);
-    return { status: "skipped", reason: "detached HEAD" };
+    return { status: 'skipped', reason: 'detached HEAD' };
   }
 
   if (!status.tracking) {
     p.log.warn(`  ○ ${repoName} (no upstream)`);
-    return { status: "skipped", reason: "no upstream tracking" };
+    return { status: 'skipped', reason: 'no upstream tracking' };
   }
 
   if (status.isDirty && !options.force) {
     p.log.warn(`  ○ ${repoName} (dirty, use --force)`);
-    return { status: "skipped", reason: "dirty working tree" };
+    return { status: 'skipped', reason: 'dirty working tree' };
   }
 
   if (options.dryRun) {
     p.log.info(`  ✓ ${repoName} (would update)`);
-    return { status: "updated", commits: 0 };
+    return { status: 'updated', commits: 0 };
   }
 
   try {
@@ -530,16 +526,16 @@ async function updateRepo(
 
     // Reset or pull based on strategy
     let commits = 0;
-    if (entry.updateStrategy === "hard-reset") {
+    if (entry.updateStrategy === 'hard-reset') {
       commits = await resetHard(localPath);
-      s.stop(`  ✓ ${repoName} (reset${commits > 0 ? `, ${commits} commits` : ""})`);
+      s.stop(`  ✓ ${repoName} (reset${commits > 0 ? `, ${commits} commits` : ''})`);
     } else {
       commits = await pullFastForward(localPath);
-      s.stop(`  ✓ ${repoName} (ff-only${commits > 0 ? `, ${commits} commits` : ""})`);
+      s.stop(`  ✓ ${repoName} (ff-only${commits > 0 ? `, ${commits} commits` : ''})`);
     }
 
     // Submodules
-    if (entry.submodules === "recursive") {
+    if (entry.submodules === 'recursive') {
       try {
         await updateSubmodules(localPath);
       } catch {
@@ -548,7 +544,7 @@ async function updateRepo(
     }
 
     // LFS
-    if (entry.lfs === "always" || (entry.lfs === "auto" && (await usesLfs(localPath)))) {
+    if (entry.lfs === 'always' || (entry.lfs === 'auto' && (await usesLfs(localPath)))) {
       try {
         await pullLfs(localPath, entry.defaultRemoteName);
       } catch {
@@ -556,11 +552,11 @@ async function updateRepo(
       }
     }
 
-    return { status: "updated", commits };
+    return { status: 'updated', commits };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     p.log.error(`  ✗ ${repoName}: ${message}`);
-    return { status: "error", error: message };
+    return { status: 'error', error: message };
   }
 }
 
@@ -569,18 +565,18 @@ async function updateRepo(
 // ─────────────────────────────────────────────────────────────────────────────
 
 function printSummary(summaries: UpdateSummary[], dryRun: boolean): void {
-  const adopted = summaries.filter((s) => s.action === "adopted").length;
-  const removed = summaries.filter((s) => s.action === "removed").length;
-  const cloned = summaries.filter((s) => s.action === "cloned").length;
-  const updated = summaries.filter((s) => s.action === "updated").length;
-  const refreshed = summaries.filter((s) => s.action === "refreshed").length;
-  const skipped = summaries.filter((s) => s.action === "skipped").length;
-  const errors = summaries.filter((s) => s.action === "error").length;
+  const adopted = summaries.filter((s) => s.action === 'adopted').length;
+  const removed = summaries.filter((s) => s.action === 'removed').length;
+  const cloned = summaries.filter((s) => s.action === 'cloned').length;
+  const updated = summaries.filter((s) => s.action === 'updated').length;
+  const refreshed = summaries.filter((s) => s.action === 'refreshed').length;
+  const skipped = summaries.filter((s) => s.action === 'skipped').length;
+  const errors = summaries.filter((s) => s.action === 'error').length;
 
-  console.log("─".repeat(50));
+  console.log('─'.repeat(50));
 
   if (dryRun) {
-    console.log("Would:");
+    console.log('Would:');
   }
 
   const parts: string[] = [];
@@ -593,8 +589,8 @@ function printSummary(summaries: UpdateSummary[], dryRun: boolean): void {
   if (errors > 0) parts.push(`${errors} errors`);
 
   if (parts.length === 0) {
-    console.log("Nothing to do.");
+    console.log('Nothing to do.');
   } else {
-    console.log(parts.join(", "));
+    console.log(parts.join(', '));
   }
 }

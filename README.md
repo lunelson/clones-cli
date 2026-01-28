@@ -93,6 +93,7 @@ clones sync --refresh        # Re-fetch metadata from GitHub
 ```
 
 **Update strategies** (per-repo, set on add):
+
 - `hard-reset` (default): Reset to upstream, discarding local changes
 - `ff-only`: Fast-forward only, fail if diverged
 
@@ -134,6 +135,7 @@ Config files live in `~/.config/clones/`:
 ```
 
 The registry tracks:
+
 - Clone URL and host
 - Description and tags
 - Update strategy and sync timestamps
@@ -141,6 +143,7 @@ The registry tracks:
 - Tombstones (repo IDs that should be removed from disk if found)
 
 Local state tracks:
+
 - Last sync run and per-repo last synced timestamps (machine-only)
 
 ## Configuration
@@ -158,12 +161,14 @@ export CLONES_CONFIG_DIR="$HOME/.config/clones"
 ## Clone Behavior
 
 By default, clones are:
+
 - **Shallow** (`--depth 1`): Only the latest commit
 - **Single-branch**: Only the default branch
 
 This makes cloning fast—even multi-GB repos clone in seconds. Use `--full` and `--all-branches` if you need history or other branches.
 
 To expand a shallow clone later:
+
 ```bash
 cd ~/Clones/owner/repo
 git fetch --unshallow
@@ -172,6 +177,7 @@ git fetch --unshallow
 ## Transactional Safety
 
 Failed operations roll back cleanly:
+
 - If a clone fails, created directories are removed
 - The registry only updates after successful operations
 - No partial state left behind

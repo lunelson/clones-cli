@@ -1,7 +1,7 @@
-import { simpleGit, type SimpleGit, type StatusResult } from "simple-git";
-import { existsSync } from "node:fs";
-import { join } from "node:path";
-import type { RepoStatus } from "../types/index.js";
+import { simpleGit, type StatusResult } from 'simple-git';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+import type { RepoStatus } from '../types/index.js';
 
 /**
  * Clone a repository to a local path
@@ -19,18 +19,18 @@ export async function cloneRepo(
   } = {}
 ): Promise<void> {
   const git = simpleGit();
-  const remoteName = options.remoteName || "origin";
+  const remoteName = options.remoteName || 'origin';
 
-  const cloneArgs: string[] = ["--origin", remoteName];
+  const cloneArgs: string[] = ['--origin', remoteName];
 
   // Default to shallow clone unless fullHistory is requested
   if (!options.fullHistory) {
-    cloneArgs.push("--depth", "1");
+    cloneArgs.push('--depth', '1');
   }
 
   // Default to single branch unless allBranches is requested
   if (!options.allBranches) {
-    cloneArgs.push("--single-branch");
+    cloneArgs.push('--single-branch');
   }
 
   await git.clone(url, localPath, cloneArgs);
@@ -41,10 +41,10 @@ export async function cloneRepo(
  */
 export async function fetchWithPrune(
   localPath: string,
-  remoteName: string = "origin"
+  remoteName: string = 'origin'
 ): Promise<void> {
   const git = simpleGit(localPath);
-  await git.fetch(remoteName, ["--prune"]);
+  await git.fetch(remoteName, ['--prune']);
 }
 
 /**
@@ -58,7 +58,7 @@ export async function resetHard(localPath: string): Promise<number> {
   const beforeHash = beforeLog.latest?.hash;
 
   // Reset to upstream
-  await git.reset(["--hard", "@{u}"]);
+  await git.reset(['--hard', '@{u}']);
 
   // Get new position after reset
   const afterLog = await git.log({ maxCount: 1 });
@@ -87,7 +87,7 @@ export async function pullFastForward(localPath: string): Promise<number> {
   const beforeLog = await git.log({ maxCount: 1 });
   const beforeHash = beforeLog.latest?.hash;
 
-  await git.pull(["--ff-only"]);
+  await git.pull(['--ff-only']);
 
   const afterLog = await git.log({ maxCount: 1 });
   const afterHash = afterLog.latest?.hash;
@@ -109,7 +109,7 @@ export async function pullFastForward(localPath: string): Promise<number> {
  */
 export async function updateSubmodules(localPath: string): Promise<void> {
   const git = simpleGit(localPath);
-  await git.submoduleUpdate(["--init", "--recursive"]);
+  await git.submoduleUpdate(['--init', '--recursive']);
 }
 
 /**
@@ -131,7 +131,7 @@ export async function getRepoStatus(localPath: string): Promise<RepoStatus> {
   }
 
   // Check if it's a git repo
-  if (!existsSync(join(localPath, ".git"))) {
+  if (!existsSync(join(localPath, '.git'))) {
     return {
       exists: true,
       isGitRepo: false,
@@ -159,7 +159,7 @@ export async function getRepoStatus(localPath: string): Promise<RepoStatus> {
       behind: status.behind,
       isDirty: status.files.length > 0,
     };
-  } catch (error) {
+  } catch {
     // Corrupted git repo
     return {
       exists: true,
@@ -179,7 +179,7 @@ export async function getRepoStatus(localPath: string): Promise<RepoStatus> {
  */
 export async function getRemoteUrl(
   localPath: string,
-  remoteName: string = "origin"
+  remoteName: string = 'origin'
 ): Promise<string | null> {
   const git = simpleGit(localPath);
 
@@ -196,15 +196,15 @@ export async function getRemoteUrl(
  * Check if a repository uses LFS (by checking .gitattributes)
  */
 export async function usesLfs(localPath: string): Promise<boolean> {
-  const gitattributes = join(localPath, ".gitattributes");
+  const gitattributes = join(localPath, '.gitattributes');
   if (!existsSync(gitattributes)) {
     return false;
   }
 
   try {
-    const { readFile } = await import("node:fs/promises");
-    const content = await readFile(gitattributes, "utf-8");
-    return content.includes("filter=lfs");
+    const { readFile } = await import('node:fs/promises');
+    const content = await readFile(gitattributes, 'utf-8');
+    return content.includes('filter=lfs');
   } catch {
     return false;
   }
@@ -213,10 +213,7 @@ export async function usesLfs(localPath: string): Promise<boolean> {
 /**
  * Pull LFS objects
  */
-export async function pullLfs(
-  localPath: string,
-  remoteName: string = "origin"
-): Promise<void> {
+export async function pullLfs(localPath: string, remoteName: string = 'origin'): Promise<void> {
   const git = simpleGit(localPath);
-  await git.raw(["lfs", "pull", remoteName]);
+  await git.raw(['lfs', 'pull', remoteName]);
 }

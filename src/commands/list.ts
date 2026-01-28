@@ -1,10 +1,10 @@
-import { defineCommand } from "citty";
-import * as p from "@clack/prompts";
-import { readRegistry, filterByTags, filterByPattern } from "../lib/registry.js";
-import { getRepoStatus } from "../lib/git.js";
-import { getRepoPath, getClonesDir } from "../lib/config.js";
-import { readLocalState, getLastSyncedAt } from "../lib/local-state.js";
-import type { RegistryEntry, RepoStatus } from "../types/index.js";
+import { defineCommand } from 'citty';
+import * as p from '@clack/prompts';
+import { readRegistry, filterByTags, filterByPattern } from '../lib/registry.js';
+import { getRepoStatus } from '../lib/git.js';
+import { getRepoPath } from '../lib/config.js';
+import { readLocalState, getLastSyncedAt } from '../lib/local-state.js';
+import type { RegistryEntry, RepoStatus } from '../types/index.js';
 
 interface ListItem {
   entry: RegistryEntry;
@@ -15,21 +15,21 @@ interface ListItem {
 
 export default defineCommand({
   meta: {
-    name: "list",
-    description: "List all tracked repositories",
+    name: 'list',
+    description: 'List all tracked repositories',
   },
   args: {
     json: {
-      type: "boolean",
-      description: "Output as JSON",
+      type: 'boolean',
+      description: 'Output as JSON',
     },
     tags: {
-      type: "string",
-      description: "Filter by tags (comma-separated)",
+      type: 'string',
+      description: 'Filter by tags (comma-separated)',
     },
     filter: {
-      type: "string",
-      description: "Filter by owner/repo pattern (supports wildcards)",
+      type: 'string',
+      description: 'Filter by owner/repo pattern (supports wildcards)',
     },
   },
   async run({ args }) {
@@ -38,9 +38,9 @@ export default defineCommand({
 
     if (registry.repos.length === 0) {
       if (args.json) {
-        console.log(JSON.stringify({ version: "1.0.0", repos: [] }, null, 2));
+        console.log(JSON.stringify({ version: '1.0.0', repos: [] }, null, 2));
       } else {
-        p.log.info("No repositories in registry.");
+        p.log.info('No repositories in registry.');
         p.log.info("Use 'clones add <url>' to add a repository.");
       }
       return;
@@ -50,23 +50,20 @@ export default defineCommand({
     let repos = registry.repos;
 
     if (args.tags) {
-      const tags = args.tags.split(",").map((t: string) => t.trim());
+      const tags = args.tags.split(',').map((t: string) => t.trim());
       repos = filterByTags(registry, tags);
     }
 
     if (args.filter) {
-      const filtered = filterByPattern(
-        { ...registry, repos },
-        args.filter
-      );
+      const filtered = filterByPattern({ ...registry, repos }, args.filter);
       repos = filtered;
     }
 
     if (repos.length === 0) {
       if (args.json) {
-        console.log(JSON.stringify({ version: "1.0.0", repos: [] }, null, 2));
+        console.log(JSON.stringify({ version: '1.0.0', repos: [] }, null, 2));
       } else {
-        p.log.info("No repositories match the filter.");
+        p.log.info('No repositories match the filter.');
       }
       return;
     }
@@ -91,7 +88,7 @@ export default defineCommand({
 
 function outputJson(items: ListItem[]): void {
   const output = {
-    version: "1.0.0",
+    version: '1.0.0',
     repos: items.map(({ entry, status, localPath, lastSyncedAt }) => ({
       id: entry.id,
       owner: entry.owner,
@@ -117,25 +114,21 @@ function outputJson(items: ListItem[]): void {
 }
 
 function outputPretty(items: ListItem[], lastSyncRun?: string): void {
-  const clonesDir = getClonesDir();
-  const shortDir = clonesDir.replace(process.env.HOME || "", "~");
-  const lastSyncLabel = lastSyncRun ? formatDate(lastSyncRun) : "never";
+  const lastSyncLabel = lastSyncRun ? formatDate(lastSyncRun) : 'never';
 
   console.log();
-  console.log(
-    `Clones Registry (${items.length} repos, last sync ${lastSyncLabel})`
-  );
+  console.log(`Clones Registry (${items.length} repos, last sync ${lastSyncLabel})`);
   console.log();
 
   for (const { entry, status, localPath, lastSyncedAt } of items) {
-    const shortPath = localPath.replace(process.env.HOME || "", "~");
+    const shortPath = localPath.replace(process.env.HOME || '', '~');
 
     console.log(`${entry.owner}/${entry.repo}`);
     console.log(`  Path: ${shortPath}`);
     console.log(`  URL: ${entry.cloneUrl}`);
 
     if (entry.tags && entry.tags.length > 0) {
-      console.log(`  Tags: ${entry.tags.join(", ")}`);
+      console.log(`  Tags: ${entry.tags.join(', ')}`);
     }
 
     if (entry.description) {
@@ -167,7 +160,7 @@ function getSyncStatus(status: RepoStatus, lastSyncedAt?: string): string {
   const parts: string[] = [];
 
   if (status.isDirty) {
-    parts.push("\u2717 Dirty");
+    parts.push('\u2717 Dirty');
   }
 
   if (status.behind > 0) {
@@ -179,24 +172,24 @@ function getSyncStatus(status: RepoStatus, lastSyncedAt?: string): string {
   }
 
   if (parts.length === 0) {
-    parts.push("\u2713 Clean");
+    parts.push('\u2713 Clean');
   }
 
   if (lastSyncedAt) {
     parts.push(`(synced ${formatRelativeTime(lastSyncedAt)})`);
   }
 
-  return parts.join(", ");
+  return parts.join(', ');
 }
 
 function formatDate(isoString: string): string {
   const date = new Date(isoString);
-  return date.toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
+  return date.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
   });
 }
 
@@ -208,7 +201,7 @@ function formatRelativeTime(isoString: string): string {
   const diffHours = Math.floor(diffMins / 60);
   const diffDays = Math.floor(diffHours / 24);
 
-  if (diffMins < 1) return "just now";
+  if (diffMins < 1) return 'just now';
   if (diffMins < 60) return `${diffMins}m ago`;
   if (diffHours < 24) return `${diffHours}h ago`;
   if (diffDays < 30) return `${diffDays}d ago`;

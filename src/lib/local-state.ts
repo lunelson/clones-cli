@@ -1,17 +1,17 @@
-import { readFile, writeFile, rename } from "node:fs/promises";
-import { existsSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { randomUUID } from "node:crypto";
-import type { LocalState, RepoLocalState } from "../types/index.js";
-import { getLocalStatePath, ensureConfigDir } from "./config.js";
-import { normalizeLocalState } from "./schema.js";
+import { readFile, writeFile, rename } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import type { LocalState, RepoLocalState } from '../types/index.js';
+import { getLocalStatePath, ensureConfigDir } from './config.js';
+import { normalizeLocalState } from './schema.js';
 
 /**
  * Create an empty local state
  */
 export function createEmptyLocalState(): LocalState {
   return {
-    version: "1.0.0",
+    version: '1.0.0',
     repos: {},
   };
 }
@@ -28,7 +28,7 @@ export async function readLocalState(): Promise<LocalState> {
   }
 
   try {
-    const content = await readFile(path, "utf-8");
+    const content = await readFile(path, 'utf-8');
     const data = JSON.parse(content) as LocalState;
     const normalized = normalizeLocalState(data);
     return normalized.data;
@@ -53,7 +53,7 @@ export async function writeLocalState(state: LocalState): Promise<void> {
 
   // Write to temp file
   const content = JSON.stringify(normalized.data, null, 2);
-  await writeFile(tempPath, content, "utf-8");
+  await writeFile(tempPath, content, 'utf-8');
 
   // Atomic rename
   await rename(tempPath, path);
@@ -62,10 +62,7 @@ export async function writeLocalState(state: LocalState): Promise<void> {
 /**
  * Get the local state for a specific repo
  */
-export function getRepoLocalState(
-  state: LocalState,
-  repoId: string
-): RepoLocalState | undefined {
+export function getRepoLocalState(state: LocalState, repoId: string): RepoLocalState | undefined {
   return state.repos[repoId];
 }
 
@@ -94,10 +91,7 @@ export function updateRepoLocalState(
 /**
  * Remove a repo from local state
  */
-export function removeRepoLocalState(
-  state: LocalState,
-  repoId: string
-): LocalState {
+export function removeRepoLocalState(state: LocalState, repoId: string): LocalState {
   const { [repoId]: _, ...remainingRepos } = state.repos;
 
   return {
@@ -119,9 +113,6 @@ export function updateLastSyncRun(state: LocalState): LocalState {
 /**
  * Get the lastSyncedAt for a repo, or undefined if not set
  */
-export function getLastSyncedAt(
-  state: LocalState,
-  repoId: string
-): string | undefined {
+export function getLastSyncedAt(state: LocalState, repoId: string): string | undefined {
   return state.repos[repoId]?.lastSyncedAt;
 }

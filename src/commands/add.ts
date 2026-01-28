@@ -1,25 +1,21 @@
-import { defineCommand } from "citty";
-import * as p from "@clack/prompts";
-import { existsSync } from "node:fs";
-import { rm } from "node:fs/promises";
-import { join } from "node:path";
-import { parseGitUrl, generateRepoId } from "../lib/url-parser.js";
+import { defineCommand } from 'citty';
+import * as p from '@clack/prompts';
+import { existsSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
+import { join } from 'node:path';
+import { parseGitUrl, generateRepoId } from '../lib/url-parser.js';
 import {
   readRegistry,
   writeRegistry,
   addEntry,
   findEntry,
   removeTombstone,
-} from "../lib/registry.js";
-import {
-  readLocalState,
-  writeLocalState,
-  updateRepoLocalState,
-} from "../lib/local-state.js";
-import { cloneRepo, getRepoStatus } from "../lib/git.js";
-import { getRepoPath, getClonesDir, DEFAULTS, ensureClonesDir } from "../lib/config.js";
-import { fetchGitHubMetadata } from "../lib/github.js";
-import type { Registry, LocalState, RegistryEntry } from "../types/index.js";
+} from '../lib/registry.js';
+import { readLocalState, writeLocalState, updateRepoLocalState } from '../lib/local-state.js';
+import { cloneRepo, getRepoStatus } from '../lib/git.js';
+import { getRepoPath, getClonesDir, DEFAULTS, ensureClonesDir } from '../lib/config.js';
+import { fetchGitHubMetadata } from '../lib/github.js';
+import type { Registry, LocalState, RegistryEntry } from '../types/index.js';
 
 interface CloneOptions {
   tags?: string;
@@ -71,16 +67,16 @@ async function cloneUrl(
     let autoDescription: string | undefined;
     let autoTopics: string[] | undefined;
 
-    if (parsed.host === "github.com" && !options.description) {
+    if (parsed.host === 'github.com' && !options.description) {
       s.start(`Fetching metadata from GitHub...`);
       spinnerStarted = true;
       const metadata = await fetchGitHubMetadata(parsed.owner, parsed.repo);
       if (metadata) {
         autoDescription = metadata.description || undefined;
         autoTopics = metadata.topics.length > 0 ? metadata.topics : undefined;
-        s.stop("Metadata fetched");
+        s.stop('Metadata fetched');
       } else {
-        s.stop("Could not fetch metadata (continuing without)");
+        s.stop('Could not fetch metadata (continuing without)');
       }
     }
 
@@ -96,7 +92,7 @@ async function cloneUrl(
         allBranches: options.allBranches,
       });
     } catch (cloneError) {
-      s.stop("Clone failed");
+      s.stop('Clone failed');
 
       if (!ownerExistedBefore && existsSync(ownerDir)) {
         try {
@@ -112,23 +108,18 @@ async function cloneUrl(
     s.stop(`Cloned to ${localPath}`);
 
     const userTags = options.tags
-      ? options.tags.split(",").map((t: string) => t.trim())
+      ? options.tags.split(',').map((t: string) => t.trim())
       : undefined;
 
     const tags = userTags || autoTopics;
 
     const updateStrategy =
-      options.updateStrategy === "ff-only" ? "ff-only" : DEFAULTS.updateStrategy;
+      options.updateStrategy === 'ff-only' ? 'ff-only' : DEFAULTS.updateStrategy;
 
-    const submodules =
-      options.submodules === "recursive" ? "recursive" : DEFAULTS.submodules;
+    const submodules = options.submodules === 'recursive' ? 'recursive' : DEFAULTS.submodules;
 
     const lfs =
-      options.lfs === "always"
-        ? "always"
-        : options.lfs === "never"
-        ? "never"
-        : DEFAULTS.lfs;
+      options.lfs === 'always' ? 'always' : options.lfs === 'never' ? 'never' : DEFAULTS.lfs;
 
     const entry: RegistryEntry = {
       id: repoId,
@@ -157,13 +148,13 @@ async function cloneUrl(
     p.log.success(`Added ${parsed.owner}/${parsed.repo} to registry`);
 
     if (tags && tags.length > 0) {
-      p.log.info(`Tags: ${tags.join(", ")}`);
+      p.log.info(`Tags: ${tags.join(', ')}`);
     }
 
     return { registry, localState };
   } catch (error) {
     if (spinnerStarted) {
-      s.stop("Failed");
+      s.stop('Failed');
     }
     p.log.error(error instanceof Error ? error.message : String(error));
     return context;
@@ -172,57 +163,57 @@ async function cloneUrl(
 
 export default defineCommand({
   meta: {
-    name: "add",
-    description: "Add a new clone by Git URL",
+    name: 'add',
+    description: 'Add a new clone by Git URL',
   },
   args: {
     url: {
-      type: "positional",
-      description: "Git URL (HTTPS or SSH) - can provide multiple",
+      type: 'positional',
+      description: 'Git URL (HTTPS or SSH) - can provide multiple',
       required: false,
     },
     tags: {
-      type: "string",
-      description: "Comma-separated tags",
+      type: 'string',
+      description: 'Comma-separated tags',
     },
     description: {
-      type: "string",
-      description: "Human-readable description",
+      type: 'string',
+      description: 'Human-readable description',
     },
-    "update-strategy": {
-      type: "string",
-      description: "Update strategy: hard-reset (default) or ff-only",
+    'update-strategy': {
+      type: 'string',
+      description: 'Update strategy: hard-reset (default) or ff-only',
     },
     submodules: {
-      type: "string",
-      description: "Submodule handling: none (default) or recursive",
+      type: 'string',
+      description: 'Submodule handling: none (default) or recursive',
     },
     lfs: {
-      type: "string",
-      description: "LFS handling: auto (default), always, or never",
+      type: 'string',
+      description: 'LFS handling: auto (default), always, or never',
     },
     full: {
-      type: "boolean",
-      description: "Clone full history (default: shallow clone with depth 1)",
+      type: 'boolean',
+      description: 'Clone full history (default: shallow clone with depth 1)',
       default: false,
     },
-    "all-branches": {
-      type: "boolean",
-      description: "Clone all branches (default: single branch only)",
+    'all-branches': {
+      type: 'boolean',
+      description: 'Clone all branches (default: single branch only)',
       default: false,
     },
   },
   async run({ args, rawArgs }) {
-    p.intro("clones add");
+    p.intro('clones add');
 
     const options: CloneOptions = {
       tags: args.tags,
       description: args.description,
-      updateStrategy: args["update-strategy"],
+      updateStrategy: args['update-strategy'],
       submodules: args.submodules,
       lfs: args.lfs,
       full: args.full,
-      allBranches: args["all-branches"],
+      allBranches: args['all-branches'],
     };
 
     const urls: string[] = [];
@@ -230,7 +221,7 @@ export default defineCommand({
       urls.push(args.url);
     }
     for (const arg of rawArgs ?? []) {
-      if (!arg.startsWith("-") && arg !== args.url && !urls.includes(arg)) {
+      if (!arg.startsWith('-') && arg !== args.url && !urls.includes(arg)) {
         urls.push(arg);
       }
     }
@@ -244,14 +235,14 @@ export default defineCommand({
       for (const url of urls) {
         context = await cloneUrl(url, options, context);
       }
-      p.outro("Done!");
+      p.outro('Done!');
       return;
     }
 
     while (true) {
       const url = await p.text({
-        message: "Enter Git URL",
-        placeholder: "https://github.com/owner/repo or git@github.com:owner/repo",
+        message: 'Enter Git URL',
+        placeholder: 'https://github.com/owner/repo or git@github.com:owner/repo',
       });
 
       if (p.isCancel(url) || !url) {
@@ -260,12 +251,12 @@ export default defineCommand({
 
       context = await cloneUrl(url, options, context);
 
-      const another = await p.confirm({ message: "Add another?" });
+      const another = await p.confirm({ message: 'Add another?' });
       if (p.isCancel(another) || !another) {
         break;
       }
     }
 
-    p.outro("Done!");
+    p.outro('Done!');
   },
 });

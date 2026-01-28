@@ -1,16 +1,12 @@
-import { homedir } from "node:os";
-import { join } from "node:path";
-import { mkdir } from "node:fs/promises";
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+import { mkdir } from 'node:fs/promises';
 
 /**
  * Get the clones directory from environment or default to ~/Clones
  */
 export function getClonesDir(): string {
-  return (
-    process.env.CLONES_CONTENT_DIR ||
-    process.env.CLONES_DIR ||
-    join(homedir(), "Clones")
-  );
+  return process.env.CLONES_CONTENT_DIR || process.env.CLONES_DIR || join(homedir(), 'Clones');
 }
 
 /**
@@ -23,23 +19,21 @@ export function getConfigDir(): string {
   }
 
   const xdgConfig = process.env.XDG_CONFIG_HOME;
-  return xdgConfig
-    ? join(xdgConfig, "clones")
-    : join(homedir(), ".config", "clones");
+  return xdgConfig ? join(xdgConfig, 'clones') : join(homedir(), '.config', 'clones');
 }
 
 /**
  * Get the path to registry.json (shared across machines)
  */
 export function getRegistryPath(): string {
-  return join(getConfigDir(), "registry.json");
+  return join(getConfigDir(), 'registry.json');
 }
 
 /**
  * Get the path to local.json (machine-specific state)
  */
 export function getLocalStatePath(): string {
-  return join(getConfigDir(), "local.json");
+  return join(getConfigDir(), 'local.json');
 }
 
 /**
@@ -69,8 +63,8 @@ export async function ensureConfigDir(): Promise<void> {
  * Default values for new registry entries
  */
 export const DEFAULTS = {
-  updateStrategy: "hard-reset" as const,
-  submodules: "none" as const,
-  lfs: "auto" as const,
-  defaultRemoteName: "origin",
+  updateStrategy: 'hard-reset' as const,
+  submodules: 'none' as const,
+  lfs: 'auto' as const,
+  defaultRemoteName: 'origin',
 };

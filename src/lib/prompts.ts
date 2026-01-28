@@ -15,10 +15,10 @@ export {
   isCancel,
   type Option,
   type AutocompleteMultiSelectOptions,
-} from "./autocomplete-multiselect.js";
+} from './autocomplete-multiselect.js';
 
 // Re-export @clack/prompts for single-select, text, etc.
-import * as p from "@clack/prompts";
+import * as p from '@clack/prompts';
 
 export const select = p.select;
 export const text = p.text;

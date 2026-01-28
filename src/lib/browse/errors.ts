@@ -3,7 +3,7 @@
  */
 export class ExitRequestedError extends Error {
   constructor() {
-    super("Exit requested");
-    this.name = "ExitRequestedError";
+    super('Exit requested');
+    this.name = 'ExitRequestedError';
   }
 }

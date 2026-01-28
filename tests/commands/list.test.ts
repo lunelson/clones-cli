@@ -1,37 +1,37 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const readRegistry = vi.fn();
 const filterByTags = vi.fn((registry: any) => registry.repos);
 const filterByPattern = vi.fn((registry: any) => registry.repos);
 const getRepoStatus = vi.fn();
-const getRepoPath = vi.fn(() => "/tmp/owner/repo");
-const getClonesDir = vi.fn(() => "/tmp");
+const getRepoPath = vi.fn(() => '/tmp/owner/repo');
+const getClonesDir = vi.fn(() => '/tmp');
 const readLocalState = vi.fn();
 const getLastSyncedAt = vi.fn((state: any, repoId: string) => state.repos[repoId]?.lastSyncedAt);
 
-vi.mock("../../src/lib/registry.js", () => ({
+vi.mock('../../src/lib/registry.js', () => ({
   readRegistry,
   filterByTags,
   filterByPattern,
 }));
 
-vi.mock("../../src/lib/git.js", () => ({
+vi.mock('../../src/lib/git.js', () => ({
   getRepoStatus,
 }));
 
-vi.mock("../../src/lib/config.js", () => ({
+vi.mock('../../src/lib/config.js', () => ({
   getRepoPath,
   getClonesDir,
 }));
 
-vi.mock("../../src/lib/local-state.js", () => ({
+vi.mock('../../src/lib/local-state.js', () => ({
   readLocalState,
   getLastSyncedAt,
 }));
 
-const { default: listCommand } = await import("../../src/commands/list.js");
+const { default: listCommand } = await import('../../src/commands/list.js');
 
-describe("clones list", () => {
+describe('clones list', () => {
   const originalLog = console.log;
 
   beforeEach(() => {
@@ -43,35 +43,35 @@ describe("clones list", () => {
     vi.clearAllMocks();
   });
 
-  it("uses local state lastSyncedAt for JSON output", async () => {
+  it('uses local state lastSyncedAt for JSON output', async () => {
     const entry = {
-      id: "github.com:owner/repo",
-      host: "github.com",
-      owner: "owner",
-      repo: "repo",
-      cloneUrl: "https://github.com/owner/repo.git",
-      defaultRemoteName: "origin",
-      updateStrategy: "hard-reset",
-      submodules: "none",
-      lfs: "auto",
+      id: 'github.com:owner/repo',
+      host: 'github.com',
+      owner: 'owner',
+      repo: 'repo',
+      cloneUrl: 'https://github.com/owner/repo.git',
+      defaultRemoteName: 'origin',
+      updateStrategy: 'hard-reset',
+      submodules: 'none',
+      lfs: 'auto',
       managed: true,
     };
 
-    readRegistry.mockResolvedValue({ version: "1.0.0", repos: [entry], tombstones: [] });
+    readRegistry.mockResolvedValue({ version: '1.0.0', repos: [entry], tombstones: [] });
     readLocalState.mockResolvedValue({
-      version: "1.0.0",
-      lastSyncRun: "2026-01-02T00:00:00Z",
+      version: '1.0.0',
+      lastSyncRun: '2026-01-02T00:00:00Z',
       repos: {
-        [entry.id]: { lastSyncedAt: "2026-01-03T00:00:00Z" },
+        [entry.id]: { lastSyncedAt: '2026-01-03T00:00:00Z' },
       },
     });
 
     getRepoStatus.mockResolvedValue({
       exists: true,
       isGitRepo: true,
-      currentBranch: "main",
+      currentBranch: 'main',
       isDetached: false,
-      tracking: "origin/main",
+      tracking: 'origin/main',
       ahead: 0,
       behind: 0,
       isDirty: false,
@@ -82,25 +82,25 @@ describe("clones list", () => {
     const output = (console.log as unknown as vi.Mock).mock.calls[0][0];
     const parsed = JSON.parse(output);
 
-    expect(parsed.repos[0].lastSyncedAt).toBe("2026-01-03T00:00:00Z");
+    expect(parsed.repos[0].lastSyncedAt).toBe('2026-01-03T00:00:00Z');
   });
 
   it("prints 'last sync never' when local state has no lastSyncRun", async () => {
     const entry = {
-      id: "github.com:owner/repo",
-      host: "github.com",
-      owner: "owner",
-      repo: "repo",
-      cloneUrl: "https://github.com/owner/repo.git",
-      defaultRemoteName: "origin",
-      updateStrategy: "hard-reset",
-      submodules: "none",
-      lfs: "auto",
+      id: 'github.com:owner/repo',
+      host: 'github.com',
+      owner: 'owner',
+      repo: 'repo',
+      cloneUrl: 'https://github.com/owner/repo.git',
+      defaultRemoteName: 'origin',
+      updateStrategy: 'hard-reset',
+      submodules: 'none',
+      lfs: 'auto',
       managed: true,
     };
 
-    readRegistry.mockResolvedValue({ version: "1.0.0", repos: [entry], tombstones: [] });
-    readLocalState.mockResolvedValue({ version: "1.0.0", repos: {} });
+    readRegistry.mockResolvedValue({ version: '1.0.0', repos: [entry], tombstones: [] });
+    readLocalState.mockResolvedValue({ version: '1.0.0', repos: {} });
 
     getRepoStatus.mockResolvedValue({
       exists: false,
@@ -115,7 +115,7 @@ describe("clones list", () => {
 
     await listCommand.run?.({ args: { json: false } } as any);
 
-    const calls = (console.log as unknown as vi.Mock).mock.calls.flat().join("\n");
-    expect(calls).toContain("last sync never");
+    const calls = (console.log as unknown as vi.Mock).mock.calls.flat().join('\n');
+    expect(calls).toContain('last sync never');
   });
 });

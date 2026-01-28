@@ -1,15 +1,15 @@
-import { defineCommand } from "citty";
-import * as p from "@clack/prompts";
-import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
-import { getRegistryPath, getLocalStatePath, ensureConfigDir } from "../lib/config.js";
-import { createEmptyRegistry, writeRegistry } from "../lib/registry.js";
-import { createEmptyLocalState, writeLocalState } from "../lib/local-state.js";
-import { normalizeRegistry, normalizeLocalState } from "../lib/schema.js";
+import { defineCommand } from 'citty';
+import * as p from '@clack/prompts';
+import { existsSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
+import { getRegistryPath, getLocalStatePath, ensureConfigDir } from '../lib/config.js';
+import { createEmptyRegistry, writeRegistry } from '../lib/registry.js';
+import { createEmptyLocalState, writeLocalState } from '../lib/local-state.js';
+import { normalizeRegistry, normalizeLocalState } from '../lib/schema.js';
 
 async function readJsonFile(path: string, label: string): Promise<unknown> {
   try {
-    const content = await readFile(path, "utf-8");
+    const content = await readFile(path, 'utf-8');
     return JSON.parse(content);
   } catch (error) {
     if (error instanceof SyntaxError) {
@@ -28,7 +28,7 @@ async function doctorRegistry(): Promise<void> {
     return;
   }
 
-  const raw = await readJsonFile(path, "Registry");
+  const raw = await readJsonFile(path, 'Registry');
   const normalized = normalizeRegistry(raw);
   const rawNormalized = JSON.stringify(raw, null, 2);
   const canonical = JSON.stringify(normalized.data, null, 2);
@@ -54,7 +54,7 @@ async function doctorLocalState(): Promise<void> {
     return;
   }
 
-  const raw = await readJsonFile(path, "Local state");
+  const raw = await readJsonFile(path, 'Local state');
   const normalized = normalizeLocalState(raw);
   const rawNormalized = JSON.stringify(raw, null, 2);
   const canonical = JSON.stringify(normalized.data, null, 2);
@@ -73,17 +73,17 @@ async function doctorLocalState(): Promise<void> {
 
 export default defineCommand({
   meta: {
-    name: "doctor",
-    description: "Normalize and validate registry/local state files",
+    name: 'doctor',
+    description: 'Normalize and validate registry/local state files',
   },
   async run() {
-    p.intro("clones doctor");
+    p.intro('clones doctor');
 
     try {
       await ensureConfigDir();
       await doctorRegistry();
       await doctorLocalState();
-      p.outro("Done!");
+      p.outro('Done!');
     } catch (error) {
       p.log.error(error instanceof Error ? error.message : String(error));
       process.exit(1);

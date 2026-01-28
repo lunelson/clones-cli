@@ -19,28 +19,31 @@ export async function fetchGitHubMetadata(
   repo: string
 ): Promise<GitHubRepoMetadata | null> {
   try {
-    const response = await fetch(
-      `https://api.github.com/repos/${owner}/${repo}`,
-      {
-        headers: {
-          Accept: "application/vnd.github.v3+json",
-          "User-Agent": "clones-cli",
-        },
-      }
-    );
+    const response = await fetch(`https://api.github.com/repos/${owner}/${repo}`, {
+      headers: {
+        Accept: 'application/vnd.github.v3+json',
+        'User-Agent': 'clones-cli',
+      },
+    });
 
     if (!response.ok) {
       return null;
     }
 
-    const data = await response.json();
+    const data = (await response.json()) as {
+      description?: string;
+      topics?: string[];
+      stargazers_count?: number;
+      language?: string;
+      homepage?: string;
+    };
 
     return {
-      description: data.description,
-      topics: data.topics || [],
-      stargazers_count: data.stargazers_count,
-      language: data.language,
-      homepage: data.homepage,
+      description: data.description ?? null,
+      topics: data.topics ?? [],
+      stargazers_count: data.stargazers_count ?? 0,
+      language: data.language ?? null,
+      homepage: data.homepage ?? null,
     };
   } catch {
     return null;

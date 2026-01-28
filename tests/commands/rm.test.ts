@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const readRegistry = vi.fn();
 const writeRegistry = vi.fn();
@@ -8,9 +8,9 @@ const addTombstone = vi.fn();
 const readLocalState = vi.fn();
 const writeLocalState = vi.fn();
 const removeRepoLocalState = vi.fn();
-const getRepoPath = vi.fn(() => "/tmp/owner/repo");
+const getRepoPath = vi.fn(() => '/tmp/owner/repo');
 
-vi.mock("@clack/prompts", () => ({
+vi.mock('@clack/prompts', () => ({
   intro: vi.fn(),
   outro: vi.fn(),
   confirm: vi.fn(),
@@ -26,7 +26,7 @@ vi.mock("@clack/prompts", () => ({
   },
 }));
 
-vi.mock("../../src/lib/registry.js", () => ({
+vi.mock('../../src/lib/registry.js', () => ({
   readRegistry,
   writeRegistry,
   removeEntry,
@@ -34,23 +34,23 @@ vi.mock("../../src/lib/registry.js", () => ({
   addTombstone,
 }));
 
-vi.mock("../../src/lib/local-state.js", () => ({
+vi.mock('../../src/lib/local-state.js', () => ({
   readLocalState,
   writeLocalState,
   removeRepoLocalState,
 }));
 
-vi.mock("../../src/lib/config.js", () => ({
+vi.mock('../../src/lib/config.js', () => ({
   getRepoPath,
 }));
 
-vi.mock("node:fs", () => ({
+vi.mock('node:fs', () => ({
   existsSync: vi.fn(() => false),
 }));
 
-const { default: rmCommand } = await import("../../src/commands/rm.js");
+const { default: rmCommand } = await import('../../src/commands/rm.js');
 
-describe("clones rm", () => {
+describe('clones rm', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -59,28 +59,28 @@ describe("clones rm", () => {
     vi.restoreAllMocks();
   });
 
-  it("removes repo from local state when deleting from registry", async () => {
+  it('removes repo from local state when deleting from registry', async () => {
     const entry = {
-      id: "github.com:owner/repo",
-      owner: "owner",
-      repo: "repo",
+      id: 'github.com:owner/repo',
+      owner: 'owner',
+      repo: 'repo',
     };
 
-    readRegistry.mockResolvedValue({ version: "1.0.0", repos: [entry], tombstones: [] });
+    readRegistry.mockResolvedValue({ version: '1.0.0', repos: [entry], tombstones: [] });
     findEntryByOwnerRepo.mockReturnValue(entry);
-    removeEntry.mockReturnValue({ version: "1.0.0", repos: [], tombstones: [] });
+    removeEntry.mockReturnValue({ version: '1.0.0', repos: [], tombstones: [] });
     addTombstone.mockImplementation((registry: any, id: string) => ({
       ...registry,
       tombstones: [...registry.tombstones, id],
     }));
     readLocalState.mockResolvedValue({
-      version: "1.0.0",
-      repos: { [entry.id]: { lastSyncedAt: "2026-01-01T00:00:00Z" } },
+      version: '1.0.0',
+      repos: { [entry.id]: { lastSyncedAt: '2026-01-01T00:00:00Z' } },
     });
-    removeRepoLocalState.mockReturnValue({ version: "1.0.0", repos: {} });
+    removeRepoLocalState.mockReturnValue({ version: '1.0.0', repos: {} });
 
     await rmCommand.run?.({
-      args: { repo: "owner/repo", "keep-disk": true, yes: true },
+      args: { repo: 'owner/repo', 'keep-disk': true, yes: true },
     } as any);
 
     expect(writeRegistry).toHaveBeenCalledTimes(1);

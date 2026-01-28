@@ -1,22 +1,15 @@
-import { defineCommand } from "citty";
-import * as p from "@clack/prompts";
-import { spawn } from "node:child_process";
-import { readRegistry } from "../lib/registry.js";
-import {
-  readLocalState,
-  getLastSyncedAt,
-} from "../lib/local-state.js";
-import { getRepoStatus } from "../lib/git.js";
-import { getRepoPath } from "../lib/config.js";
-import {
-  autocompleteMultiselect,
-  isCancel,
-  type Option,
-} from "../lib/autocomplete-multiselect.js";
-import { toUserPath, formatRelativeTime, copyToClipboard } from "../lib/ui-utils.js";
-import { showBatchActions, type RepoInfo } from "../lib/browse/batch-actions.js";
-import { ExitRequestedError } from "../lib/browse/errors.js";
-import type { Registry } from "../types/index.js";
+import { defineCommand } from 'citty';
+import * as p from '@clack/prompts';
+import { spawn } from 'node:child_process';
+import { readRegistry } from '../lib/registry.js';
+import { readLocalState, getLastSyncedAt } from '../lib/local-state.js';
+import { getRepoStatus } from '../lib/git.js';
+import { getRepoPath } from '../lib/config.js';
+import { autocompleteMultiselect, isCancel, type Option } from '../lib/autocomplete-multiselect.js';
+import { toUserPath, formatRelativeTime, copyToClipboard } from '../lib/ui-utils.js';
+import { showBatchActions, type RepoInfo } from '../lib/browse/batch-actions.js';
+import { ExitRequestedError } from '../lib/browse/errors.js';
+import type { Registry } from '../types/index.js';
 
 function requestExit(): never {
   throw new ExitRequestedError();
@@ -24,8 +17,8 @@ function requestExit(): never {
 
 export default defineCommand({
   meta: {
-    name: "browse",
-    description: "Interactively browse and manage clones",
+    name: 'browse',
+    description: 'Interactively browse and manage clones',
   },
   args: {},
   async run() {
@@ -38,14 +31,14 @@ export default defineCommand({
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function mainLoop(): Promise<void> {
-  p.intro("clones");
+  p.intro('clones');
 
   try {
     const registry = await readRegistry();
     if (registry.repos.length === 0) {
-      p.log.info("No repositories in registry.");
+      p.log.info('No repositories in registry.');
       p.log.info("Use 'clones add <url>' to add a repository.");
-      p.outro("Goodbye!");
+      p.outro('Goodbye!');
       return;
     }
 
@@ -54,7 +47,7 @@ async function mainLoop(): Promise<void> {
     }
   } catch (error) {
     if (error instanceof ExitRequestedError) {
-      p.outro("Goodbye!");
+      p.outro('Goodbye!');
       return;
     }
     throw error;
@@ -68,7 +61,7 @@ async function mainLoop(): Promise<void> {
 async function browseRepos(registry: Registry): Promise<void> {
   // Load status for all repos
   const s = p.spinner();
-  s.start("Loading repositories...");
+  s.start('Loading repositories...');
 
   const repos: RepoInfo[] = await Promise.all(
     registry.repos.map(async (entry) => {
@@ -84,15 +77,15 @@ async function browseRepos(registry: Registry): Promise<void> {
   const options: Option<RepoInfo>[] = repos.map((r) => {
     const hints: string[] = [];
     if (!r.status.exists) {
-      hints.push("missing");
+      hints.push('missing');
     } else if (r.status.isDirty) {
-      hints.push("dirty");
+      hints.push('dirty');
     }
 
     return {
       value: r,
       label: `${r.entry.owner}/${r.entry.repo}`,
-      hint: hints.length > 0 ? hints.join(", ") : undefined,
+      hint: hints.length > 0 ? hints.join(', ') : undefined,
     };
   });
 
@@ -102,15 +95,15 @@ async function browseRepos(registry: Registry): Promise<void> {
     const term = searchText.toLowerCase();
     const entry = option.value.entry;
     const label = `${entry.owner}/${entry.repo}`.toLowerCase();
-    const tags = entry.tags?.join(" ").toLowerCase() ?? "";
-    const desc = entry.description?.toLowerCase() ?? "";
+    const tags = entry.tags?.join(' ').toLowerCase() ?? '';
+    const desc = entry.description?.toLowerCase() ?? '';
     return label.includes(term) || tags.includes(term) || desc.includes(term);
   };
 
   const selected = await autocompleteMultiselect({
-    message: "Select repositories (type to filter, Tab to select)",
+    message: 'Select repositories (type to filter, Tab to select)',
     options,
-    placeholder: "Type to search...",
+    placeholder: 'Type to search...',
     filter: repoInfoFilter,
   });
 
@@ -119,7 +112,7 @@ async function browseRepos(registry: Registry): Promise<void> {
   }
 
   if (selected.length === 0) {
-    p.log.info("No repositories selected.");
+    p.log.info('No repositories selected.');
     return;
   }
 
@@ -136,17 +129,17 @@ async function browseRepos(registry: Registry): Promise<void> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function showRepoDetails(repo: RepoInfo): Promise<void> {
-  const shortPath = repo.localPath.replace(process.env.HOME || "", "~");
+  const shortPath = repo.localPath.replace(process.env.HOME || '', '~');
 
   // Display repo info
   console.log();
   console.log(`  ${repo.entry.owner}/${repo.entry.repo}`);
-  console.log(`  ${"─".repeat(40)}`);
+  console.log(`  ${'─'.repeat(40)}`);
   console.log(`  Path: ${shortPath}`);
   console.log(`  URL:  ${repo.entry.cloneUrl}`);
 
   if (repo.entry.tags && repo.entry.tags.length > 0) {
-    console.log(`  Tags: ${repo.entry.tags.join(", ")}`);
+    console.log(`  Tags: ${repo.entry.tags.join(', ')}`);
   } else {
     console.log(`  Tags: (none)`);
   }
@@ -179,34 +172,34 @@ async function showRepoDetails(repo: RepoInfo): Promise<void> {
 
   // Action menu
   const action = await p.select({
-    message: "What would you like to do?",
+    message: 'What would you like to do?',
     options: [
-      { value: "copy", label: "Copy path to clipboard" },
-      { value: "open", label: "Open in editor" },
-      { value: "back", label: "Go back" },
-      { value: "exit", label: "Exit" },
+      { value: 'copy', label: 'Copy path to clipboard' },
+      { value: 'open', label: 'Open in editor' },
+      { value: 'back', label: 'Go back' },
+      { value: 'exit', label: 'Exit' },
     ],
   });
 
-  if (p.isCancel(action) || action === "exit") {
+  if (p.isCancel(action) || action === 'exit') {
     requestExit();
   }
 
-  if (action === "back") {
+  if (action === 'back') {
     return;
   }
 
   switch (action) {
-    case "copy": {
+    case 'copy': {
       const userPath = toUserPath(repo.localPath);
       await copyToClipboard(userPath);
       p.log.success(`Copied: ${userPath}`);
       break;
     }
 
-    case "open": {
-      const editor = process.env.EDITOR || "code";
-      spawn(editor, [repo.localPath], { detached: true, stdio: "ignore" }).unref();
+    case 'open': {
+      const editor = process.env.EDITOR || 'code';
+      spawn(editor, [repo.localPath], { detached: true, stdio: 'ignore' }).unref();
       p.log.success(`Opened in ${editor}`);
       break;
     }

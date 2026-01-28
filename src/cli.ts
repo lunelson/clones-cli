@@ -1,24 +1,23 @@
-import { defineCommand, runMain } from "citty";
+import { defineCommand, runMain } from 'citty';
 
 const main = defineCommand({
   meta: {
-    name: "clones",
-    version: "1.0.0",
-    description:
-      "A read-only Git repository manager for exploration and reference",
+    name: 'clones',
+    version: '1.0.0',
+    description: 'A read-only Git repository manager for exploration and reference',
   },
   subCommands: {
-    add: () => import("./commands/add.js").then((m) => m.default),
-    doctor: () => import("./commands/doctor.js").then((m) => m.default),
-    list: () => import("./commands/list.js").then((m) => m.default),
-    ls: () => import("./commands/list.js").then((m) => m.default),
-    rm: () => import("./commands/rm.js").then((m) => m.default),
-    sync: () => import("./commands/sync.js").then((m) => m.default),
+    add: () => import('./commands/add.js').then((m) => m.default),
+    doctor: () => import('./commands/doctor.js').then((m) => m.default),
+    list: () => import('./commands/list.js').then((m) => m.default),
+    ls: () => import('./commands/list.js').then((m) => m.default),
+    rm: () => import('./commands/rm.js').then((m) => m.default),
+    sync: () => import('./commands/sync.js').then((m) => m.default),
   },
   // Default: run interactive browser when no subcommand given
   async run() {
-    const { default: browse } = await import("./commands/browse.js");
-    await browse.run?.({ args: {} } as any);
+    const { default: browse } = await import('./commands/browse.js');
+    await browse.run?.({ args: {} } as unknown as Parameters<typeof browse.run>[0]);
   },
 });
 

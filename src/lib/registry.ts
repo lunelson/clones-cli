@@ -1,17 +1,17 @@
-import { readFile, writeFile, rename } from "node:fs/promises";
-import { existsSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { randomUUID } from "node:crypto";
-import type { Registry, RegistryEntry } from "../types/index.js";
-import { getRegistryPath, ensureConfigDir } from "./config.js";
-import { normalizeRegistry } from "./schema.js";
+import { readFile, writeFile, rename } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import type { Registry, RegistryEntry } from '../types/index.js';
+import { getRegistryPath, ensureConfigDir } from './config.js';
+import { normalizeRegistry } from './schema.js';
 
 /**
  * Create an empty registry
  */
 export function createEmptyRegistry(): Registry {
   return {
-    version: "1.0.0",
+    version: '1.0.0',
     repos: [],
     tombstones: [],
   };
@@ -29,7 +29,7 @@ export async function readRegistry(): Promise<Registry> {
   }
 
   try {
-    const content = await readFile(path, "utf-8");
+    const content = await readFile(path, 'utf-8');
     const data = JSON.parse(content) as Registry;
 
     const normalized = normalizeRegistry(data);
@@ -55,7 +55,7 @@ export async function writeRegistry(registry: Registry): Promise<void> {
 
   // Write to temp file
   const content = JSON.stringify(normalized.data, null, 2);
-  await writeFile(tempPath, content, "utf-8");
+  await writeFile(tempPath, content, 'utf-8');
 
   // Atomic rename
   await rename(tempPath, path);
@@ -76,9 +76,7 @@ export function findEntryByOwnerRepo(
   owner: string,
   repo: string
 ): RegistryEntry | undefined {
-  return registry.repos.find(
-    (entry) => entry.owner === owner && entry.repo === repo
-  );
+  return registry.repos.find((entry) => entry.owner === owner && entry.repo === repo);
 }
 
 /**
@@ -165,32 +163,22 @@ export function removeTombstone(registry: Registry, id: string): Registry {
 /**
  * Filter entries by tags (any match)
  */
-export function filterByTags(
-  registry: Registry,
-  tags: string[]
-): RegistryEntry[] {
+export function filterByTags(registry: Registry, tags: string[]): RegistryEntry[] {
   if (tags.length === 0) return registry.repos;
 
-  return registry.repos.filter((entry) =>
-    entry.tags?.some((tag) => tags.includes(tag))
-  );
+  return registry.repos.filter((entry) => entry.tags?.some((tag) => tags.includes(tag)));
 }
 
 /**
  * Filter entries by owner/repo pattern (supports wildcards)
  * Pattern format: "owner/repo" or "owner/\*" or "\*\/repo"
  */
-export function filterByPattern(
-  registry: Registry,
-  pattern: string
-): RegistryEntry[] {
-  const [ownerPattern, repoPattern] = pattern.split("/");
+export function filterByPattern(registry: Registry, pattern: string): RegistryEntry[] {
+  const [ownerPattern, repoPattern] = pattern.split('/');
 
   return registry.repos.filter((entry) => {
-    const ownerMatch =
-      ownerPattern === "*" || entry.owner === ownerPattern;
-    const repoMatch =
-      !repoPattern || repoPattern === "*" || entry.repo === repoPattern;
+    const ownerMatch = ownerPattern === '*' || entry.owner === ownerPattern;
+    const repoMatch = !repoPattern || repoPattern === '*' || entry.repo === repoPattern;
     return ownerMatch && repoMatch;
   });
 }

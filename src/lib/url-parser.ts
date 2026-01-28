@@ -1,4 +1,4 @@
-import type { ParsedGitUrl } from "../types/index.js";
+import type { ParsedGitUrl } from '../types/index.js';
 
 /**
  * Normalize a Git URL by stripping extra path segments, queries, and hashes
@@ -10,10 +10,10 @@ import type { ParsedGitUrl } from "../types/index.js";
 export function normalizeGitUrl(url: string): string {
   const trimmed = url.trim();
 
-  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
     try {
       const parsed = new URL(trimmed);
-      const segments = parsed.pathname.split("/").filter(Boolean);
+      const segments = parsed.pathname.split('/').filter(Boolean);
 
       if (segments.length < 2) {
         return trimmed;
@@ -48,17 +48,15 @@ export function parseGitUrl(url: string): ParsedGitUrl {
   if (sshMatch) {
     const [, host, rawPath] = sshMatch;
     const path = rawPath.split(/[?#]/)[0];
-    const segments = path.split("/").filter(Boolean);
+    const segments = path.split('/').filter(Boolean);
 
     if (segments.length < 2) {
-      throw new Error("Invalid Git URL format");
+      throw new Error('Invalid Git URL format');
     }
 
     const owner = segments[0];
     const repoSegment = segments[1];
-    const repo = repoSegment.endsWith(".git")
-      ? repoSegment.slice(0, -4)
-      : repoSegment;
+    const repo = repoSegment.endsWith('.git') ? repoSegment.slice(0, -4) : repoSegment;
 
     return {
       host,
@@ -70,20 +68,18 @@ export function parseGitUrl(url: string): ParsedGitUrl {
 
   // HTTPS format: https://host/owner/repo.git
   const normalized = normalizeGitUrl(trimmed);
-  if (normalized.startsWith("http://") || normalized.startsWith("https://")) {
+  if (normalized.startsWith('http://') || normalized.startsWith('https://')) {
     try {
       const parsed = new URL(normalized);
-      const segments = parsed.pathname.split("/").filter(Boolean);
+      const segments = parsed.pathname.split('/').filter(Boolean);
 
       if (segments.length < 2) {
-        throw new Error("Invalid Git URL format");
+        throw new Error('Invalid Git URL format');
       }
 
       const owner = segments[0];
       const repoSegment = segments[1];
-      const repo = repoSegment.endsWith(".git")
-        ? repoSegment.slice(0, -4)
-        : repoSegment;
+      const repo = repoSegment.endsWith('.git') ? repoSegment.slice(0, -4) : repoSegment;
 
       return {
         host: parsed.host,
