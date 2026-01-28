@@ -1,4 +1,14 @@
 import { defineCommand, runMain } from 'citty';
+import cfonts from 'cfonts';
+
+const result = cfonts.render('clones', {
+  font: 'tiny',
+  colors: ['candy'],
+  space: false,
+});
+const banner = result && result.string;
+
+console.log(banner);
 
 const main = defineCommand({
   meta: {
