@@ -46,11 +46,13 @@
     "is-unicode-supported": "^2.1.0",
     "picocolors": "^1.0.0",
     "simple-git": "^3.27.0",
-    "sisteransi": "^1.0.5"
+    "sisteransi": "^1.0.5",
+    "update-notifier": "^7.3.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.2",
     "@types/node": "^22.0.0",
+    "@types/update-notifier": "^6.0.8",
     "eslint": "^9.39.2",
     "eslint-config-prettier": "^10.1.8",
     "np": "^10.2.0",

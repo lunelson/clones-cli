@@ -1,12 +1,33 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { mkdir } from 'node:fs/promises';
+import { existsSync, readFileSync } from 'node:fs';
+
+function getConfigPath(): string {
+  return join(getConfigDir(), 'config.json');
+}
+
+function loadConfigSync(): { contentDir?: string } | null {
+  try {
+    const configPath = getConfigPath();
+    if (!existsSync(configPath)) return null;
+    return JSON.parse(readFileSync(configPath, 'utf-8'));
+  } catch {
+    return null;
+  }
+}
 
 /**
- * Get the clones directory from environment or default to ~/Clones
+ * Get the clones directory from environment, config, or default to ~/Clones
  */
 export function getClonesDir(): string {
-  return process.env.CLONES_CONTENT_DIR || process.env.CLONES_DIR || join(homedir(), 'Clones');
+  if (process.env.CLONES_CONTENT_DIR) return process.env.CLONES_CONTENT_DIR;
+  if (process.env.CLONES_DIR) return process.env.CLONES_DIR;
+
+  const config = loadConfigSync();
+  if (config?.contentDir) return config.contentDir;
+
+  return join(homedir(), 'Clones');
 }
 
 /**
