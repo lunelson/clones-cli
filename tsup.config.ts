@@ -14,4 +14,7 @@ export default defineConfig({
   banner: {
     js: '#!/usr/bin/env node',
   },
+  define: {
+    __DEV__: 'false',
+  },
 });
