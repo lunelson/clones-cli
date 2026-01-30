@@ -32,7 +32,7 @@
     "format:check": "prettier --check .",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
-    "prepack": "npm run build",
+    "prepack": "RELEASE=true npm run build",
     "prepublishOnly": "npm test",
     "release": "np",
     "test": "vitest run",

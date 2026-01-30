@@ -1,5 +1,7 @@
 import { defineConfig } from 'tsup';
 
+const isRelease = process.env.RELEASE === 'true';
+
 export default defineConfig({
   entry: ['src/cli.ts'],
   format: ['esm'],
@@ -15,6 +17,6 @@ export default defineConfig({
     js: '#!/usr/bin/env node',
   },
   define: {
-    __DEV__: 'false',
+    __DEV__: isRelease ? 'false' : 'true',
   },
 });
