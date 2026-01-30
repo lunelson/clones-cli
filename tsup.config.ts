@@ -10,6 +10,7 @@ export default defineConfig({
   sourcemap: true,
   dts: false,
   shims: true,
+  noExternal: [/^(?!simple-git|update-notifier).*/],
   banner: {
     js: '#!/usr/bin/env node',
   },
