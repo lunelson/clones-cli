@@ -25,3 +25,9 @@ This document records durable decisions made during maintenance and remediation.
 - Decision: Skip adoption when on-disk `owner/repo` does not match the remote URL; log a warning.
 - Rationale: Avoid silently registering a repo under a misleading path.
 - Consequence: Manual intervention required for renamed or moved folders; alternative behaviors are in the roadmap.
+
+## 2026-01-31: Skip dirty repos during sync without --force
+
+- Decision: When a repo has a dirty working tree, `clones sync` skips updates unless `--force` is provided.
+- Rationale: Default update strategy uses hard reset; skipping avoids accidental loss of uncommitted changes.
+- Consequence: Users must either clean/stash or run with `--force` to update those repos.
