@@ -2,11 +2,10 @@
  * Reusable filter factories for autocomplete/search components
  */
 
-import type { Option, FilterFn } from './autocomplete-multiselect.js';
+import type { Option } from '@clack/prompts';
 import type { RegistryEntry } from '../types/index.js';
 
-// Re-export FilterFn for convenience
-export type { FilterFn };
+export type FilterFn<Value> = (searchText: string, option: Option<Value>) => boolean;
 
 /**
  * Create a filter function for repository entries

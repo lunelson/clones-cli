@@ -1,11 +1,11 @@
 import { defineCommand } from 'citty';
 import * as p from '@clack/prompts';
+import type { Option } from '@clack/prompts';
 import { spawn } from 'node:child_process';
 import { readRegistry } from '../lib/registry.js';
 import { readLocalState, getLastSyncedAt } from '../lib/local-state.js';
 import { getRepoStatus } from '../lib/git.js';
 import { getRepoPath } from '../lib/config.js';
-import { autocompleteMultiselect, isCancel, type Option } from '../lib/autocomplete-multiselect.js';
 import { toUserPath, formatRelativeTime, copyToClipboard } from '../lib/ui-utils.js';
 import { showBatchActions, type RepoInfo } from '../lib/browse/batch-actions.js';
 import { ExitRequestedError } from '../lib/browse/errors.js';
@@ -100,14 +100,14 @@ async function browseRepos(registry: Registry): Promise<void> {
     return label.includes(term) || tags.includes(term) || desc.includes(term);
   };
 
-  const selected = await autocompleteMultiselect({
+  const selected = await p.autocompleteMultiselect({
     message: 'Select repositories (type to filter, Tab to select)',
     options,
     placeholder: 'Type to search...',
     filter: repoInfoFilter,
   });
 
-  if (isCancel(selected)) {
+  if (p.isCancel(selected)) {
     requestExit();
   }
 

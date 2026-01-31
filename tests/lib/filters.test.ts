@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { createRepoFilter, type FilterFn } from '../../src/lib/filters.js';
-import type { Option } from '../../src/lib/autocomplete-multiselect.js';
+import type { Option } from '@clack/prompts';
 import type { RegistryEntry } from '../../src/types/index.js';
 
 // Helper to create mock registry entry

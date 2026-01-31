@@ -1,5 +1,6 @@
 import { defineCommand } from 'citty';
 import * as p from '@clack/prompts';
+import type { Option } from '@clack/prompts';
 import { rm } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import {
@@ -11,7 +12,6 @@ import {
 } from '../lib/registry.js';
 import { readLocalState, writeLocalState, removeRepoLocalState } from '../lib/local-state.js';
 import { getRepoPath } from '../lib/config.js';
-import { autocompleteMultiselect, isCancel, type Option } from '../lib/autocomplete-multiselect.js';
 import type { RegistryEntry } from '../types/index.js';
 
 export default defineCommand({
@@ -101,7 +101,7 @@ export default defineCommand({
       });
 
       if (p.isCancel(shouldContinue) || !shouldContinue) {
-        p.outro('Cancelled');
+        p.cancel('Cancelled');
         return;
       }
     }
@@ -169,15 +169,15 @@ async function interactiveRemove(args: { 'keep-disk'?: boolean; yes?: boolean })
     return label.includes(term) || tags.includes(term) || desc.includes(term);
   };
 
-  const selected = await autocompleteMultiselect({
+  const selected = await p.autocompleteMultiselect({
     message: 'Select repositories to remove (type to filter, Tab to select)',
     options,
     placeholder: 'Type to search...',
     filter,
   });
 
-  if (isCancel(selected)) {
-    p.outro('Cancelled');
+  if (p.isCancel(selected)) {
+    p.cancel('Cancelled');
     return;
   }
 
@@ -197,7 +197,7 @@ async function interactiveRemove(args: { 'keep-disk'?: boolean; yes?: boolean })
     });
 
     if (p.isCancel(shouldContinue) || !shouldContinue) {
-      p.outro('Cancelled');
+      p.cancel('Cancelled');
       return;
     }
   }

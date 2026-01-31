@@ -1,6 +1,6 @@
 import { defineCommand } from 'citty';
 import * as p from '@clack/prompts';
-import { parseGitUrl, generateRepoId } from '../lib/url-parser.js';
+import { parseGitUrl, generateRepoId, isValidGitUrl } from '../lib/url-parser.js';
 import {
   readRegistry,
   writeRegistry,
@@ -232,16 +232,33 @@ export default defineCommand({
       const url = await p.text({
         message: 'Enter Git URL',
         placeholder: 'https://github.com/owner/repo or git@github.com:owner/repo',
+        validate: (value) => {
+          if (!value) return undefined;
+          if (!isValidGitUrl(value)) {
+            return 'Enter a valid Git URL (HTTPS or SSH)';
+          }
+          return undefined;
+        },
       });
 
-      if (p.isCancel(url) || !url) {
+      if (p.isCancel(url)) {
+        p.cancel('Cancelled');
+        return;
+      }
+
+      if (!url) {
         break;
       }
 
       context = await cloneUrl(url, options, context);
 
       const another = await p.confirm({ message: 'Add another?' });
-      if (p.isCancel(another) || !another) {
+      if (p.isCancel(another)) {
+        p.cancel('Cancelled');
+        return;
+      }
+
+      if (!another) {
         break;
       }
     }
