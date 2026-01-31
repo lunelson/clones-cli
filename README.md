@@ -90,6 +90,7 @@ clones sync --dry-run        # Preview changes
 clones sync --force          # Sync even if working tree is dirty
 clones sync --keep           # Keep tombstoned repos on disk
 clones sync --refresh        # Re-fetch metadata from GitHub
+clones sync --concurrency 6  # Parallel git operations (default: 4, max: 10)
 ```
 
 **Update strategies** (per-repo, set on add):

@@ -194,36 +194,66 @@ export default defineCommand({
     if (reposToUpdate.length === 0) {
       p.log.info('  No repos to update');
     } else {
-      for (const entry of reposToUpdate) {
-        const result = await updateRepo(entry, syncOptions);
-        const name = `${entry.owner}/${entry.repo}`;
+      const concurrency = Math.min(Math.max(syncOptions.concurrency, 1), reposToUpdate.length);
+      const progress = p.progress({ max: reposToUpdate.length, style: 'heavy' });
+      const log = p.taskLog({ title: 'Updating repos', retainLog: true });
+      let completed = 0;
+      let updateErrors = 0;
 
-        if (result.status === 'updated') {
+      progress.start('Updating repos');
+
+      for await (const outcome of runWithConcurrency(reposToUpdate, concurrency, async (entry) => {
+        const result = await updateRepo(entry, syncOptions);
+        return { entry, result };
+      })) {
+        completed += 1;
+        progress.advance(1, `${completed}/${reposToUpdate.length} updated`);
+        const name = `${outcome.entry.owner}/${outcome.entry.repo}`;
+
+        if (outcome.result.status === 'updated') {
+          const actionLabel = dryRun
+            ? 'would update'
+            : outcome.entry.updateStrategy === 'hard-reset'
+              ? 'reset'
+              : 'ff-only';
+          const detail = outcome.result.commits ? `, ${outcome.result.commits} commits` : '';
+          log.message(`  ✓ ${name} (${actionLabel}${detail})`);
+
           summaries.push({
             name,
             action: 'updated',
-            detail: result.commits ? `${result.commits} commits` : undefined,
+            detail: outcome.result.commits ? `${outcome.result.commits} commits` : undefined,
           });
 
-          // Update lastSyncedAt in local state
           if (!dryRun) {
-            localState = updateRepoLocalState(localState, entry.id, {
+            localState = updateRepoLocalState(localState, outcome.entry.id, {
               lastSyncedAt: new Date().toISOString(),
             });
           }
-        } else if (result.status === 'skipped') {
+        } else if (outcome.result.status === 'skipped') {
+          log.message(`  ○ ${name} (${outcome.result.reason})`);
           summaries.push({
             name,
             action: 'skipped',
-            detail: result.reason,
+            detail: outcome.result.reason,
           });
         } else {
+          updateErrors += 1;
+          log.message(`  ✗ ${name} (${outcome.result.error})`);
           summaries.push({
             name,
             action: 'error',
-            detail: result.error,
+            detail: outcome.result.error,
           });
         }
+      }
+
+      if (updateErrors > 0) {
+        progress.stop('Update completed with errors');
+        log.error('Update completed with errors');
+      } else {
+        progress.stop('Update complete');
+        log.success('Update complete');
       }
     }
 
@@ -531,55 +561,42 @@ async function updateRepo(
   options: { dryRun: boolean; force: boolean }
 ): Promise<UpdateResult> {
   const localPath = getRepoPath(entry.owner, entry.repo);
-  const repoName = `${entry.owner}/${entry.repo}`;
-
   // Check status
   const status = await getRepoStatus(localPath);
 
   if (!status.exists) {
-    p.log.error(`  ✗ ${repoName} (missing)`);
     return { status: 'skipped', reason: 'directory missing' };
   }
 
   if (!status.isGitRepo) {
-    p.log.error(`  ✗ ${repoName} (not a git repo)`);
     return { status: 'skipped', reason: 'not a git repo' };
   }
 
   if (status.isDetached) {
-    p.log.warn(`  ○ ${repoName} (detached HEAD)`);
     return { status: 'skipped', reason: 'detached HEAD' };
   }
 
   if (!status.tracking) {
-    p.log.warn(`  ○ ${repoName} (no upstream)`);
     return { status: 'skipped', reason: 'no upstream tracking' };
   }
 
   if (status.isDirty && !options.force) {
-    p.log.warn(`  ○ ${repoName} (dirty, use --force)`);
     return { status: 'skipped', reason: 'dirty working tree' };
   }
 
   if (options.dryRun) {
-    p.log.info(`  ✓ ${repoName} (would update)`);
     return { status: 'updated', commits: 0 };
   }
 
   try {
-    // Fetch
-    const s = p.spinner();
-    s.start(`  ${repoName}: fetching...`);
     await fetchWithPrune(localPath, entry.defaultRemoteName);
 
     // Reset or pull based on strategy
     let commits = 0;
     if (entry.updateStrategy === 'hard-reset') {
       commits = await resetHard(localPath);
-      s.stop(`  ✓ ${repoName} (reset${commits > 0 ? `, ${commits} commits` : ''})`);
     } else {
       commits = await pullFastForward(localPath);
-      s.stop(`  ✓ ${repoName} (ff-only${commits > 0 ? `, ${commits} commits` : ''})`);
     }
 
     // Submodules
@@ -603,7 +620,6 @@ async function updateRepo(
     return { status: 'updated', commits };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    p.log.error(`  ✗ ${repoName}: ${message}`);
     return { status: 'error', error: message };
   }
 }
