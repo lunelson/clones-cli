@@ -85,15 +85,17 @@ describe('scanClonesDir', () => {
     expect(result.skipped.some((s) => s.path.includes('unsafe'))).toBe(true);
   });
 
-  it('skips registry.json at root level', async () => {
+  it('skips registry files at root level', async () => {
     await writeFile(join(testDir, 'registry.json'), '{}');
+    await writeFile(join(testDir, 'registry.toml'), 'version = "1.0.0"');
     await mkdir(join(testDir, 'owner', 'repo', '.git'), { recursive: true });
 
     const result = await scanClonesDir();
 
     expect(result.discovered).toHaveLength(1);
-    // registry.json should not appear in skipped
+    // registry files should not appear in skipped
     expect(result.skipped.every((s) => !s.path.includes('registry.json'))).toBe(true);
+    expect(result.skipped.every((s) => !s.path.includes('registry.toml'))).toBe(true);
   });
 
   it('handles non-directory files at owner level', async () => {

@@ -1,13 +1,207 @@
-import { readFile, writeFile, rename } from 'node:fs/promises';
+import { readFile, writeFile, rename, unlink } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { Registry, RegistryEntry } from '../types/index.js';
-import { getRegistryPath, ensureConfigDir } from './config.js';
+import { getLegacyRegistryPath, getRegistryPath, ensureConfigDir } from './config.js';
 import { normalizeRegistry } from './schema.js';
 
 function canonicalize(value: string): string {
   return value.toLowerCase();
+}
+
+type RegistryFormat = 'toml' | 'json';
+
+type RegistryFile = {
+  path: string;
+  format: RegistryFormat;
+  content: string;
+};
+
+function detectRegistryFile(): { path: string; format: RegistryFormat } | null {
+  const tomlPath = getRegistryPath();
+  if (existsSync(tomlPath)) {
+    return { path: tomlPath, format: 'toml' };
+  }
+
+  const legacyPath = getLegacyRegistryPath();
+  if (existsSync(legacyPath)) {
+    return { path: legacyPath, format: 'json' };
+  }
+
+  return null;
+}
+
+export async function readRegistryFile(): Promise<RegistryFile | null> {
+  const detected = detectRegistryFile();
+  if (!detected) return null;
+
+  const content = await readFile(detected.path, 'utf-8');
+  return { ...detected, content };
+}
+
+function stripTomlComment(line: string): string {
+  let inString = false;
+  let escaped = false;
+
+  for (let i = 0; i < line.length; i += 1) {
+    const char = line[i];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (char === '\\') {
+      escaped = true;
+      continue;
+    }
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (!inString && char === '#') {
+      return line.slice(0, i);
+    }
+  }
+
+  return line;
+}
+
+function parseTomlValue(raw: string): unknown {
+  const trimmed = raw.trim();
+  if (trimmed.startsWith('"')) {
+    return JSON.parse(trimmed);
+  }
+  if (trimmed.startsWith('[')) {
+    if (!trimmed.endsWith(']')) {
+      throw new Error('Invalid TOML array');
+    }
+    const inner = trimmed.slice(1, -1).replace(/,\s*$/, '');
+    return JSON.parse(`[${inner}]`);
+  }
+  if (trimmed === 'true' || trimmed === 'false') {
+    return trimmed === 'true';
+  }
+
+  throw new Error('Unsupported TOML value');
+}
+
+// Minimal TOML subset parser for registry.toml (strings, string arrays, booleans, [[repos]]).
+function parseRegistryToml(content: string): unknown {
+  const result: Record<string, unknown> = {};
+  const repos: Record<string, unknown>[] = [];
+  let currentRepo: Record<string, unknown> | null = null;
+
+  for (const rawLine of content.split('\n')) {
+    const line = stripTomlComment(rawLine).trim();
+    if (!line) continue;
+
+    if (line === '[[repos]]') {
+      currentRepo = {};
+      repos.push(currentRepo);
+      continue;
+    }
+
+    const equalsIndex = line.indexOf('=');
+    if (equalsIndex === -1) {
+      throw new Error('Invalid TOML line');
+    }
+
+    const key = line.slice(0, equalsIndex).trim();
+    const value = parseTomlValue(line.slice(equalsIndex + 1));
+
+    const isTopLevelKey = key === 'version' || key === 'tombstones';
+    if (currentRepo && !isTopLevelKey) {
+      currentRepo[key] = value;
+    } else {
+      result[key] = value;
+    }
+  }
+
+  result.repos = repos;
+
+  return result;
+}
+
+export function parseRegistryContent(
+  content: string,
+  format: RegistryFormat,
+  path: string
+): unknown {
+  try {
+    return format === 'toml' ? parseRegistryToml(content) : JSON.parse(content);
+  } catch {
+    throw new Error(`Registry file is corrupted: ${path}`);
+  }
+}
+
+function buildRegistryPayload(registry: Registry): Record<string, unknown> {
+  const repos = registry.repos.map((entry) => {
+    const repo: Record<string, unknown> = {
+      id: entry.id,
+      host: entry.host,
+      owner: entry.owner,
+      repo: entry.repo,
+      cloneUrl: entry.cloneUrl,
+    };
+
+    if (entry.description !== undefined) {
+      repo.description = entry.description;
+    }
+    if (entry.tags?.length) {
+      repo.tags = entry.tags;
+    }
+
+    repo.defaultRemoteName = entry.defaultRemoteName;
+    repo.updateStrategy = entry.updateStrategy;
+    repo.submodules = entry.submodules;
+    repo.lfs = entry.lfs;
+    repo.managed = entry.managed;
+
+    return repo;
+  });
+
+  return {
+    version: registry.version,
+    repos,
+    tombstones: registry.tombstones,
+  };
+}
+
+function formatTomlString(value: string): string {
+  return JSON.stringify(value);
+}
+
+function formatTomlArray(values: string[]): string {
+  return `[${values.map((value) => formatTomlString(value)).join(', ')}]`;
+}
+
+export function stringifyRegistryToml(registry: Registry): string {
+  const payload = buildRegistryPayload(registry) as {
+    version: string;
+    repos: Record<string, unknown>[];
+    tombstones: string[];
+  };
+  const lines: string[] = [];
+
+  lines.push(`version = ${formatTomlString(payload.version)}`);
+  lines.push(`tombstones = ${formatTomlArray(payload.tombstones)}`);
+
+  for (const entry of payload.repos) {
+    lines.push('');
+    lines.push('[[repos]]');
+
+    for (const [key, value] of Object.entries(entry)) {
+      if (typeof value === 'string') {
+        lines.push(`${key} = ${formatTomlString(value)}`);
+      } else if (Array.isArray(value)) {
+        lines.push(`${key} = ${formatTomlArray(value as string[])}`);
+      } else if (typeof value === 'boolean') {
+        lines.push(`${key} = ${value ? 'true' : 'false'}`);
+      }
+    }
+  }
+
+  return `${lines.join('\n').trimEnd()}\n`;
 }
 
 /**
@@ -26,24 +220,14 @@ export function createEmptyRegistry(): Registry {
  * Returns an empty registry if the file doesn't exist
  */
 export async function readRegistry(): Promise<Registry> {
-  const path = getRegistryPath();
-
-  if (!existsSync(path)) {
+  const registryFile = await readRegistryFile();
+  if (!registryFile) {
     return createEmptyRegistry();
   }
 
-  try {
-    const content = await readFile(path, 'utf-8');
-    const data = JSON.parse(content) as Registry;
-
-    const normalized = normalizeRegistry(data);
-    return normalized.data;
-  } catch (error) {
-    if (error instanceof SyntaxError) {
-      throw new Error(`Registry file is corrupted: ${path}`);
-    }
-    throw error;
-  }
+  const raw = parseRegistryContent(registryFile.content, registryFile.format, registryFile.path);
+  const normalized = normalizeRegistry(raw);
+  return normalized.data;
 }
 
 /**
@@ -58,11 +242,20 @@ export async function writeRegistry(registry: Registry): Promise<void> {
   const tempPath = join(dirname(path), `.registry.${randomUUID()}.tmp`);
 
   // Write to temp file
-  const content = JSON.stringify(normalized.data, null, 2);
+  const content = stringifyRegistryToml(normalized.data);
   await writeFile(tempPath, content, 'utf-8');
 
   // Atomic rename
   await rename(tempPath, path);
+
+  const legacyPath = getLegacyRegistryPath();
+  if (existsSync(legacyPath)) {
+    try {
+      await unlink(legacyPath);
+    } catch {
+      // Best-effort cleanup; avoid blocking normal registry writes.
+    }
+  }
 }
 
 /**

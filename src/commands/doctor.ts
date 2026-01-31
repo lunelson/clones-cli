@@ -3,7 +3,13 @@ import * as p from '@clack/prompts';
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { getRegistryPath, getLocalStatePath, ensureConfigDir } from '../lib/config.js';
-import { createEmptyRegistry, writeRegistry } from '../lib/registry.js';
+import {
+  createEmptyRegistry,
+  parseRegistryContent,
+  readRegistryFile,
+  stringifyRegistryToml,
+  writeRegistry,
+} from '../lib/registry.js';
 import { createEmptyLocalState, writeLocalState } from '../lib/local-state.js';
 import { normalizeRegistry, normalizeLocalState } from '../lib/schema.js';
 
@@ -20,24 +26,24 @@ async function readJsonFile(path: string, label: string): Promise<unknown> {
 }
 
 async function doctorRegistry(): Promise<void> {
-  const path = getRegistryPath();
-
-  if (!existsSync(path)) {
+  const registryPath = getRegistryPath();
+  const registryFile = await readRegistryFile();
+  if (!registryFile) {
     await writeRegistry(createEmptyRegistry());
-    p.log.warn(`Created missing registry file: ${path}`);
+    p.log.warn(`Created missing registry file: ${registryPath}`);
     return;
   }
 
-  const raw = await readJsonFile(path, 'Registry');
+  const raw = parseRegistryContent(registryFile.content, registryFile.format, registryFile.path);
   const normalized = normalizeRegistry(raw);
-  const rawNormalized = JSON.stringify(raw, null, 2);
-  const canonical = JSON.stringify(normalized.data, null, 2);
+  const canonical = stringifyRegistryToml(normalized.data);
+  const needsWrite = registryFile.format === 'json' || canonical !== registryFile.content;
 
-  if (canonical !== rawNormalized) {
+  if (needsWrite) {
     await writeRegistry(normalized.data);
-    p.log.success(`Normalized registry: ${path}`);
+    p.log.success(`Normalized registry: ${registryPath}`);
   } else {
-    p.log.info(`Registry OK: ${path}`);
+    p.log.info(`Registry OK: ${registryPath}`);
   }
 
   for (const issue of normalized.issues) {

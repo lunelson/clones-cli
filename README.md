@@ -99,7 +99,7 @@ clones sync --refresh        # Re-fetch metadata from GitHub
 
 ### `clones doctor`
 
-Normalize and validate config files (`registry.json` and `local.json`), dropping unknown fields and repairing invalid values.
+Normalize and validate config files (`registry.toml` and `local.json`), dropping unknown fields and repairing invalid values.
 
 ```bash
 clones doctor
@@ -130,7 +130,7 @@ Config files live in `~/.config/clones/`:
 
 ```
 ~/.config/clones/
-├── registry.json   # Shared registry (sync to dotfiles)
+├── registry.toml   # Shared registry (sync to dotfiles)
 └── local.json      # Machine-local state
 ```
 

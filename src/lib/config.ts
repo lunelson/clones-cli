@@ -32,7 +32,7 @@ export function getClonesDir(): string {
 }
 
 /**
- * Get the config directory (for registry.json and local.json)
+ * Get the config directory (for registry.toml and local.json)
  * Uses CLONES_CONFIG_DIR if set, otherwise XDG_CONFIG_HOME/clones, otherwise ~/.config/clones
  */
 export function getConfigDir(): string {
@@ -45,9 +45,16 @@ export function getConfigDir(): string {
 }
 
 /**
- * Get the path to registry.json (shared across machines)
+ * Get the path to registry.toml (shared across machines)
  */
 export function getRegistryPath(): string {
+  return join(getConfigDir(), 'registry.toml');
+}
+
+/**
+ * Get the path to the legacy registry.json (shared across machines)
+ */
+export function getLegacyRegistryPath(): string {
   return join(getConfigDir(), 'registry.json');
 }
 
