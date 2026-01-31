@@ -53,6 +53,19 @@ describe('findEntry', () => {
     expect(found).toBe(entry);
   });
 
+  it('finds entry by ID regardless of casing', () => {
+    const entry = createTestEntry();
+    const registry: Registry = {
+      version: '1.0.0',
+      repos: [entry],
+      tombstones: [],
+    };
+
+    const found = findEntry(registry, 'GitHub.com:Owner/Repo');
+
+    expect(found).toBe(entry);
+  });
+
   it('returns undefined for unknown ID', () => {
     const registry = createEmptyRegistry();
 
@@ -72,6 +85,19 @@ describe('findEntryByOwnerRepo', () => {
     };
 
     const found = findEntryByOwnerRepo(registry, 'owner', 'repo');
+
+    expect(found).toBe(entry);
+  });
+
+  it('finds entry by owner and repo regardless of casing', () => {
+    const entry = createTestEntry();
+    const registry: Registry = {
+      version: '1.0.0',
+      repos: [entry],
+      tombstones: [],
+    };
+
+    const found = findEntryByOwnerRepo(registry, 'Owner', 'Repo');
 
     expect(found).toBe(entry);
   });
@@ -193,6 +219,13 @@ describe('tombstones', () => {
     ]);
   });
 
+  it('normalizes tombstone casing', () => {
+    const registry = createEmptyRegistry();
+    const updated = addTombstone(registry, 'GitHub.com:Owner/Repo');
+
+    expect(updated.tombstones).toEqual(['github.com:owner/repo']);
+  });
+
   it('removes tombstone', () => {
     const registry: Registry = {
       version: '1.0.0',
@@ -293,6 +326,13 @@ describe('filterByPattern', () => {
       ],
       tombstones: [],
     };
+  });
+
+  it('matches regardless of casing', () => {
+    const filtered = filterByPattern(registry, 'Owner1/Repo-A');
+
+    expect(filtered).toHaveLength(1);
+    expect(filtered[0].id).toBe('github.com:owner1/repo-a');
   });
 
   it('filters by exact owner/repo', () => {

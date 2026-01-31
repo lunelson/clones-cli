@@ -141,15 +141,16 @@ describe('parseGitUrl', () => {
       });
     });
 
-    it('handles SSH URLs with extra path segments', () => {
-      const result = parseGitUrl('git@github.com:owner/repo/tree/main');
+    it('rejects SSH URLs with extra path segments', () => {
+      expect(() => parseGitUrl('git@github.com:owner/repo/tree/main')).toThrow(
+        'Unsupported SSH URL format'
+      );
+    });
 
-      expect(result).toEqual({
-        host: 'github.com',
-        owner: 'owner',
-        repo: 'repo',
-        cloneUrl: 'git@github.com:owner/repo.git',
-      });
+    it('rejects subgroup-style HTTPS URLs', () => {
+      expect(() => parseGitUrl('https://gitlab.com/group/subgroup/repo')).toThrow(
+        'Subgroup paths are not supported yet'
+      );
     });
   });
 });
@@ -266,9 +267,9 @@ describe('parseGitUrl with web UI URLs', () => {
 
     expect(result).toEqual({
       host: 'github.com',
-      owner: 'SBoudrias',
-      repo: 'Inquirer.js',
-      cloneUrl: 'https://github.com/SBoudrias/Inquirer.js.git',
+      owner: 'sboudrias',
+      repo: 'inquirer.js',
+      cloneUrl: 'https://github.com/sboudrias/inquirer.js.git',
     });
   });
 

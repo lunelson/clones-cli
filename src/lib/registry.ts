@@ -6,6 +6,10 @@ import type { Registry, RegistryEntry } from '../types/index.js';
 import { getRegistryPath, ensureConfigDir } from './config.js';
 import { normalizeRegistry } from './schema.js';
 
+function canonicalize(value: string): string {
+  return value.toLowerCase();
+}
+
 /**
  * Create an empty registry
  */
@@ -65,7 +69,8 @@ export async function writeRegistry(registry: Registry): Promise<void> {
  * Find a registry entry by ID
  */
 export function findEntry(registry: Registry, id: string): RegistryEntry | undefined {
-  return registry.repos.find((entry) => entry.id === id);
+  const normalizedId = canonicalize(id);
+  return registry.repos.find((entry) => entry.id === normalizedId);
 }
 
 /**
@@ -76,7 +81,11 @@ export function findEntryByOwnerRepo(
   owner: string,
   repo: string
 ): RegistryEntry | undefined {
-  return registry.repos.find((entry) => entry.owner === owner && entry.repo === repo);
+  const normalizedOwner = canonicalize(owner);
+  const normalizedRepo = canonicalize(repo);
+  return registry.repos.find(
+    (entry) => entry.owner === normalizedOwner && entry.repo === normalizedRepo
+  );
 }
 
 /**
@@ -136,13 +145,14 @@ export function removeEntry(registry: Registry, id: string): Registry {
  * Add an ID to tombstones (no-op if already present)
  */
 export function addTombstone(registry: Registry, id: string): Registry {
-  if (registry.tombstones.includes(id)) {
+  const normalizedId = canonicalize(id);
+  if (registry.tombstones.includes(normalizedId)) {
     return registry;
   }
 
   return {
     ...registry,
-    tombstones: [...registry.tombstones, id],
+    tombstones: [...registry.tombstones, normalizedId],
   };
 }
 
@@ -150,13 +160,14 @@ export function addTombstone(registry: Registry, id: string): Registry {
  * Remove an ID from tombstones (no-op if missing)
  */
 export function removeTombstone(registry: Registry, id: string): Registry {
-  if (!registry.tombstones.includes(id)) {
+  const normalizedId = canonicalize(id);
+  if (!registry.tombstones.includes(normalizedId)) {
     return registry;
   }
 
   return {
     ...registry,
-    tombstones: registry.tombstones.filter((entryId) => entryId !== id),
+    tombstones: registry.tombstones.filter((entryId) => entryId !== normalizedId),
   };
 }
 
@@ -174,7 +185,7 @@ export function filterByTags(registry: Registry, tags: string[]): RegistryEntry[
  * Pattern format: "owner/repo" or "owner/\*" or "\*\/repo"
  */
 export function filterByPattern(registry: Registry, pattern: string): RegistryEntry[] {
-  const [ownerPattern, repoPattern] = pattern.split('/');
+  const [ownerPattern, repoPattern] = pattern.toLowerCase().split('/');
 
   return registry.repos.filter((entry) => {
     const ownerMatch = ownerPattern === '*' || entry.owner === ownerPattern;

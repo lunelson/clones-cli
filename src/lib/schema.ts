@@ -28,6 +28,20 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+function canonicalizeRepoId(id: string): string {
+  return id.toLowerCase();
+}
+
+function canonicalizeRepoPart(value: string): string {
+  return value.toLowerCase();
+}
+
+function pickLatestTimestamp(a?: string, b?: string): string | undefined {
+  if (!a) return b;
+  if (!b) return a;
+  return a > b ? a : b;
+}
+
 function requireString(value: unknown, label: string): string {
   if (typeof value !== 'string' || value.length === 0) {
     throw new Error(`Invalid registry format (missing ${label})`);
@@ -49,11 +63,33 @@ function normalizeRegistryEntry(
     }
   }
 
-  const id = requireString(raw.id, 'id');
-  const host = requireString(raw.host, 'host');
-  const owner = requireString(raw.owner, 'owner');
-  const repo = requireString(raw.repo, 'repo');
+  const rawId = requireString(raw.id, 'id');
+  const rawHost = requireString(raw.host, 'host');
+  const rawOwner = requireString(raw.owner, 'owner');
+  const rawRepo = requireString(raw.repo, 'repo');
   const cloneUrl = requireString(raw.cloneUrl, 'cloneUrl');
+
+  const host = canonicalizeRepoPart(rawHost);
+  const owner = canonicalizeRepoPart(rawOwner);
+  const repo = canonicalizeRepoPart(rawRepo);
+  if (host !== rawHost) {
+    issues.push(`registry.repos[${index}] normalized host casing`);
+    changed = true;
+  }
+  if (owner !== rawOwner) {
+    issues.push(`registry.repos[${index}] normalized owner casing`);
+    changed = true;
+  }
+  if (repo !== rawRepo) {
+    issues.push(`registry.repos[${index}] normalized repo casing`);
+    changed = true;
+  }
+
+  const id = `${host}:${owner}/${repo}`;
+  if (rawId !== id) {
+    issues.push(`registry.repos[${index}] normalized id casing`);
+    changed = true;
+  }
   const defaultRemoteName =
     typeof raw.defaultRemoteName === 'string' && raw.defaultRemoteName.length > 0
       ? raw.defaultRemoteName
@@ -150,7 +186,9 @@ export function normalizeRegistry(raw: unknown): NormalizationResult<Registry> {
     throw new Error('Invalid registry format');
   }
 
-  const repos: RegistryEntry[] = raw.repos.map((entry, index) => {
+  const repos: RegistryEntry[] = [];
+  const seenRepoIds = new Set<string>();
+  raw.repos.forEach((entry, index) => {
     if (!isRecord(entry)) {
       throw new Error(`Invalid registry format (repos[${index}])`);
     }
@@ -158,14 +196,27 @@ export function normalizeRegistry(raw: unknown): NormalizationResult<Registry> {
     if (normalized.changed) {
       changed = true;
     }
-    return normalized.entry;
+    if (seenRepoIds.has(normalized.entry.id)) {
+      issues.push(`registry.repos[${index}] dropped duplicate repo id "${normalized.entry.id}"`);
+      changed = true;
+      return;
+    }
+    seenRepoIds.add(normalized.entry.id);
+    repos.push(normalized.entry);
   });
 
   let tombstones: string[] = [];
   if (Array.isArray(raw.tombstones)) {
-    const filtered = raw.tombstones.filter(
-      (entry) => typeof entry === 'string' && entry.length > 0
-    );
+    const filtered = raw.tombstones
+      .filter((entry) => typeof entry === 'string' && entry.length > 0)
+      .map((entry) => {
+        const canonical = canonicalizeRepoId(entry);
+        if (canonical !== entry) {
+          issues.push('registry normalized tombstone casing');
+          changed = true;
+        }
+        return canonical;
+      });
     if (filtered.length !== raw.tombstones.length) {
       issues.push('registry dropped invalid tombstones');
       changed = true;
@@ -227,6 +278,12 @@ export function normalizeLocalState(raw: unknown): NormalizationResult<LocalStat
       continue;
     }
 
+    const canonicalRepoId = canonicalizeRepoId(repoId);
+    if (canonicalRepoId !== repoId) {
+      issues.push(`local.json normalized repo id casing for "${repoId}"`);
+      changed = true;
+    }
+
     let lastSyncedAt: string | undefined;
     if (typeof value.lastSyncedAt === 'string') {
       lastSyncedAt = value.lastSyncedAt;
@@ -235,7 +292,16 @@ export function normalizeLocalState(raw: unknown): NormalizationResult<LocalStat
       changed = true;
     }
 
-    repos[repoId] = { lastSyncedAt };
+    if (repos[canonicalRepoId]) {
+      issues.push(`local.json merged duplicate repo state for "${canonicalRepoId}"`);
+      changed = true;
+      repos[canonicalRepoId] = {
+        lastSyncedAt: pickLatestTimestamp(repos[canonicalRepoId].lastSyncedAt, lastSyncedAt),
+      };
+      continue;
+    }
+
+    repos[canonicalRepoId] = { lastSyncedAt };
   }
 
   let lastSyncRun: string | undefined;
