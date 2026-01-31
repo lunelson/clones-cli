@@ -29,6 +29,7 @@ import {
   getRemoteUrl,
 } from '../lib/git.js';
 import { getRepoPath, DEFAULTS, getSyncConcurrency } from '../lib/config.js';
+import { createCancellationController } from '../lib/cancel.js';
 import { scanClonesDir, isNestedRepo } from '../lib/scan.js';
 import { parseGitUrl, generateRepoId } from '../lib/url-parser.js';
 import { fetchGitHubMetadata } from '../lib/github.js';
@@ -75,300 +76,351 @@ export default defineCommand({
   async run({ args }) {
     p.intro('clones sync');
 
-    const dryRun = args['dry-run'] || false;
-    const force = args.force || false;
-    const keep = args.keep || false;
-    const configConcurrency = getSyncConcurrency();
-    const normalizedConfigConcurrency = normalizeConcurrency(configConcurrency, {
-      defaultValue: 4,
-    });
-    if (configConcurrency !== undefined && normalizedConfigConcurrency.warning) {
-      p.log.warn(normalizedConfigConcurrency.warning);
-    }
-    const { value: concurrency, warning: concurrencyWarning } = normalizeConcurrency(
-      args.concurrency,
-      {
-        defaultValue: normalizedConfigConcurrency.value,
+    const cancellation = createCancellationController();
+    let cancelled = false;
+    const noticeCancellation = () => {
+      if (!cancelled && cancellation.signal.aborted) {
+        cancelled = true;
+        p.log.warn('Cancellation requested; skipping remaining phases.');
       }
-    );
-    if (concurrencyWarning) {
-      p.log.warn(concurrencyWarning);
-    }
+      return cancelled;
+    };
 
-    const syncOptions = { dryRun, force, keep, concurrency };
-
-    if (dryRun) {
-      p.log.warn('Dry run mode - no changes will be made');
-    }
-
-    let registry = await readRegistry();
-    let localState = await readLocalState();
-    const summaries: UpdateSummary[] = [];
-
-    // ═══════════════════════════════════════════════════════════════════
-    // PHASE 1: ADOPT - Discover untracked repos on disk
-    // ═══════════════════════════════════════════════════════════════════
-    p.log.step('Phase 1: Discovering untracked repos...');
-
-    const {
-      adopted,
-      removed,
-      skipped: adoptSkipped,
-      registry: registryAfterAdopt,
-    } = await adoptPhase(registry, syncOptions);
-    registry = registryAfterAdopt;
-
-    for (const repo of adopted) {
-      summaries.push({
-        name: `${repo.owner}/${repo.repo}`,
-        action: 'adopted',
+    try {
+      const dryRun = args['dry-run'] || false;
+      const force = args.force || false;
+      const keep = args.keep || false;
+      const configConcurrency = getSyncConcurrency();
+      const normalizedConfigConcurrency = normalizeConcurrency(configConcurrency, {
+        defaultValue: 4,
       });
-    }
-
-    for (const repo of removed) {
-      summaries.push({
-        name: `${repo.owner}/${repo.repo}`,
-        action: 'removed',
-      });
-    }
-
-    for (const skipped of adoptSkipped) {
-      summaries.push({
-        name: `${skipped.owner}/${skipped.repo}`,
-        action: 'skipped',
-        detail: skipped.reason,
-      });
-    }
-
-    if (adopted.length === 0) {
-      p.log.info('  No untracked repos found');
-    } else {
-      p.log.success(`  ${adopted.length} repo(s) ${dryRun ? 'would be' : ''} adopted`);
-    }
-
-    if (removed.length > 0) {
-      p.log.success(`  ${removed.length} repo(s) ${dryRun ? 'would be' : ''} removed`);
-    }
-
-    if (adoptSkipped.length > 0) {
-      p.log.info(`  ${adoptSkipped.length} repo(s) skipped`);
-    }
-
-    // ═══════════════════════════════════════════════════════════════════
-    // PHASE 2: CLONE - Clone repos in registry but missing from disk
-    // ═══════════════════════════════════════════════════════════════════
-    p.log.step('Phase 2: Cloning missing repos...');
-
-    const { cloned, errors: cloneErrors } = await clonePhase(registry, syncOptions);
-
-    for (const repo of cloned) {
-      summaries.push({
-        name: `${repo.owner}/${repo.repo}`,
-        action: 'cloned',
-      });
-    }
-
-    for (const err of cloneErrors) {
-      summaries.push({
-        name: err.name,
-        action: 'error',
-        detail: err.error,
-      });
-    }
-
-    if (cloned.length === 0 && cloneErrors.length === 0) {
-      p.log.info('  No missing repos to clone');
-    } else {
-      if (cloned.length > 0) {
-        p.log.success(`  ${cloned.length} repo(s) ${dryRun ? 'would be' : ''} cloned`);
+      if (configConcurrency !== undefined && normalizedConfigConcurrency.warning) {
+        p.log.warn(normalizedConfigConcurrency.warning);
       }
-      if (cloneErrors.length > 0) {
-        p.log.error(`  ${cloneErrors.length} clone error(s)`);
+      const { value: concurrency, warning: concurrencyWarning } = normalizeConcurrency(
+        args.concurrency,
+        {
+          defaultValue: normalizedConfigConcurrency.value,
+        }
+      );
+      if (concurrencyWarning) {
+        p.log.warn(concurrencyWarning);
       }
-    }
 
-    // ═══════════════════════════════════════════════════════════════════
-    // PHASE 3: UPDATE - Fetch and reset all tracked repos
-    // ═══════════════════════════════════════════════════════════════════
-    p.log.step('Phase 3: Updating repos...');
+      const syncOptions = {
+        dryRun,
+        force,
+        keep,
+        concurrency,
+        signal: cancellation.signal,
+        cancel: cancellation.cancel,
+      };
 
-    // Apply filter if specified
-    let reposToUpdate = registry.repos.filter((r) => r.managed);
+      if (dryRun) {
+        p.log.warn('Dry run mode - no changes will be made');
+      }
 
-    if (args.filter) {
-      reposToUpdate = filterByPattern({ ...registry, repos: reposToUpdate }, args.filter);
-      p.log.info(`  Filtering to: ${args.filter}`);
-    }
+      let registry = await readRegistry();
+      let localState = await readLocalState();
+      const summaries: UpdateSummary[] = [];
 
-    if (reposToUpdate.length === 0) {
-      p.log.info('  No repos to update');
-    } else {
-      const concurrency = Math.min(Math.max(syncOptions.concurrency, 1), reposToUpdate.length);
-      const progress = p.progress({ max: reposToUpdate.length, style: 'heavy' });
-      const log = p.taskLog({ title: 'Updating repos', retainLog: true });
-      let completed = 0;
-      let updateErrors = 0;
+      // ═══════════════════════════════════════════════════════════════════
+      // PHASE 1: ADOPT - Discover untracked repos on disk
+      // ═══════════════════════════════════════════════════════════════════
+      p.log.step('Phase 1: Discovering untracked repos...');
 
-      progress.start('Updating repos');
+      const {
+        adopted,
+        removed,
+        skipped: adoptSkipped,
+        registry: registryAfterAdopt,
+      } = await adoptPhase(registry, syncOptions);
+      registry = registryAfterAdopt;
 
-      for await (const outcome of runWithConcurrency(reposToUpdate, concurrency, async (entry) => {
-        const result = await updateRepo(entry, syncOptions);
-        return { entry, result };
-      })) {
-        completed += 1;
-        progress.advance(1, `${completed}/${reposToUpdate.length} updated`);
-        const name = `${outcome.entry.owner}/${outcome.entry.repo}`;
+      for (const repo of adopted) {
+        summaries.push({
+          name: `${repo.owner}/${repo.repo}`,
+          action: 'adopted',
+        });
+      }
 
-        if (outcome.result.status === 'updated') {
-          const actionLabel = dryRun
-            ? 'would update'
-            : outcome.entry.updateStrategy === 'hard-reset'
-              ? 'reset'
-              : 'ff-only';
-          const detail = outcome.result.commits ? `, ${outcome.result.commits} commits` : '';
-          log.message(`  ✓ ${name} (${actionLabel}${detail})`);
+      for (const repo of removed) {
+        summaries.push({
+          name: `${repo.owner}/${repo.repo}`,
+          action: 'removed',
+        });
+      }
 
+      for (const skipped of adoptSkipped) {
+        summaries.push({
+          name: `${skipped.owner}/${skipped.repo}`,
+          action: 'skipped',
+          detail: skipped.reason,
+        });
+      }
+
+      if (adopted.length === 0) {
+        p.log.info('  No untracked repos found');
+      } else {
+        p.log.success(`  ${adopted.length} repo(s) ${dryRun ? 'would be' : ''} adopted`);
+      }
+
+      if (removed.length > 0) {
+        p.log.success(`  ${removed.length} repo(s) ${dryRun ? 'would be' : ''} removed`);
+      }
+
+      if (adoptSkipped.length > 0) {
+        p.log.info(`  ${adoptSkipped.length} repo(s) skipped`);
+      }
+
+      // ═══════════════════════════════════════════════════════════════════
+      // PHASE 2: CLONE - Clone repos in registry but missing from disk
+      // ═══════════════════════════════════════════════════════════════════
+      if (!noticeCancellation()) {
+        p.log.step('Phase 2: Cloning missing repos...');
+
+        const { cloned, errors: cloneErrors } = await clonePhase(registry, syncOptions);
+
+        for (const repo of cloned) {
           summaries.push({
-            name,
-            action: 'updated',
-            detail: outcome.result.commits ? `${outcome.result.commits} commits` : undefined,
+            name: `${repo.owner}/${repo.repo}`,
+            action: 'cloned',
           });
+        }
 
-          if (!dryRun) {
-            localState = updateRepoLocalState(localState, outcome.entry.id, {
-              lastSyncedAt: new Date().toISOString(),
-            });
-          }
-        } else if (outcome.result.status === 'skipped') {
-          log.message(`  ○ ${name} (${outcome.result.reason})`);
+        for (const err of cloneErrors) {
           summaries.push({
-            name,
-            action: 'skipped',
-            detail: outcome.result.reason,
-          });
-        } else {
-          updateErrors += 1;
-          log.message(`  ✗ ${name} (${outcome.result.error})`);
-          summaries.push({
-            name,
+            name: err.name,
             action: 'error',
-            detail: outcome.result.error,
+            detail: err.error,
           });
         }
-      }
 
-      if (updateErrors > 0) {
-        progress.stop('Update completed with errors');
-        log.error('Update completed with errors');
-      } else {
-        progress.stop('Update complete');
-        log.success('Update complete');
-      }
-    }
-
-    // ═══════════════════════════════════════════════════════════════════
-    // PHASE 4: REFRESH METADATA (optional)
-    // ═══════════════════════════════════════════════════════════════════
-    if (args.refresh) {
-      p.log.step('Phase 4: Refreshing metadata from GitHub...');
-
-      const githubRepos = registry.repos.filter((r) => r.host === 'github.com');
-
-      if (githubRepos.length === 0) {
-        p.log.info('  No GitHub repos to refresh');
-      } else {
-        const progress = p.progress({ max: githubRepos.length, style: 'heavy' });
-        const log = p.taskLog({ title: 'Refreshing metadata', retainLog: true });
-        let completed = 0;
-        let refreshErrors = 0;
-
-        progress.start('Refreshing metadata');
-
-        for await (const outcome of runWithConcurrency(
-          githubRepos,
-          syncOptions.concurrency,
-          async (entry) => {
-            if (dryRun) {
-              return { entry, status: 'dry-run' as const };
-            }
-
-            try {
-              const metadata = await fetchGitHubMetadata(entry.owner, entry.repo);
-              if (!metadata) {
-                return { entry, status: 'missing' as const };
-              }
-              return { entry, status: 'ok' as const, metadata };
-            } catch (error) {
-              return { entry, status: 'error' as const, error };
-            }
-          }
-        )) {
-          completed += 1;
-          progress.advance(1, `${completed}/${githubRepos.length} refreshed`);
-
-          const name = `${outcome.entry.owner}/${outcome.entry.repo}`;
-
-          if (outcome.status === 'dry-run') {
-            log.message(`  ↻ ${name} (would refresh)`);
-            summaries.push({ name, action: 'refreshed' });
-            continue;
-          }
-
-          if (outcome.status === 'missing') {
-            log.message(`  ○ ${name} (could not fetch)`);
-            continue;
-          }
-
-          if (outcome.status === 'error') {
-            refreshErrors += 1;
-            const message =
-              outcome.error instanceof Error ? outcome.error.message : String(outcome.error);
-            log.message(`  ✗ ${name} (${message})`);
-            continue;
-          }
-
-          const newDescription = outcome.metadata.description || undefined;
-          const newTags = outcome.metadata.topics.length > 0 ? outcome.metadata.topics : undefined;
-
-          const descChanged = outcome.entry.description !== newDescription;
-          const tagsChanged = JSON.stringify(outcome.entry.tags) !== JSON.stringify(newTags);
-
-          if (descChanged || tagsChanged) {
-            registry = updateEntry(registry, outcome.entry.id, {
-              description: newDescription,
-              tags: newTags,
-            });
-            log.message(`  ↻ ${name} (refreshed)`);
-            summaries.push({ name, action: 'refreshed' });
-          } else {
-            log.message(`  ○ ${name} (unchanged)`);
-          }
-        }
-
-        if (refreshErrors > 0) {
-          progress.stop('Refresh completed with errors');
-          log.error('Refresh completed with errors');
+        if (cloned.length === 0 && cloneErrors.length === 0) {
+          p.log.info('  No missing repos to clone');
         } else {
-          progress.stop('Refresh complete');
-          log.success('Refresh complete');
+          if (cloned.length > 0) {
+            p.log.success(`  ${cloned.length} repo(s) ${dryRun ? 'would be' : ''} cloned`);
+          }
+          if (cloneErrors.length > 0) {
+            p.log.error(`  ${cloneErrors.length} clone error(s)`);
+          }
         }
       }
+
+      // ═══════════════════════════════════════════════════════════════════
+      // PHASE 3: UPDATE - Fetch and reset all tracked repos
+      // ═══════════════════════════════════════════════════════════════════
+      if (!noticeCancellation()) {
+        p.log.step('Phase 3: Updating repos...');
+
+        // Apply filter if specified
+        let reposToUpdate = registry.repos.filter((r) => r.managed);
+
+        if (args.filter) {
+          reposToUpdate = filterByPattern({ ...registry, repos: reposToUpdate }, args.filter);
+          p.log.info(`  Filtering to: ${args.filter}`);
+        }
+
+        if (reposToUpdate.length === 0) {
+          p.log.info('  No repos to update');
+        } else {
+          const concurrency = Math.min(Math.max(syncOptions.concurrency, 1), reposToUpdate.length);
+          const progress = p.progress({
+            max: reposToUpdate.length,
+            style: 'heavy',
+            signal: syncOptions.signal,
+            onCancel: syncOptions.cancel,
+          });
+          const log = p.taskLog({
+            title: 'Updating repos',
+            retainLog: true,
+            signal: syncOptions.signal,
+          });
+          let completed = 0;
+          let updateErrors = 0;
+
+          progress.start('Updating repos');
+
+          for await (const outcome of runWithConcurrency(
+            reposToUpdate,
+            concurrency,
+            async (entry) => {
+              const result = await updateRepo(entry, syncOptions);
+              return { entry, result };
+            },
+            syncOptions.signal
+          )) {
+            completed += 1;
+            progress.advance(1, `${completed}/${reposToUpdate.length} updated`);
+            const name = `${outcome.entry.owner}/${outcome.entry.repo}`;
+
+            if (outcome.result.status === 'updated') {
+              const actionLabel = dryRun
+                ? 'would update'
+                : outcome.entry.updateStrategy === 'hard-reset'
+                  ? 'reset'
+                  : 'ff-only';
+              const detail = outcome.result.commits ? `, ${outcome.result.commits} commits` : '';
+              log.message(`  ✓ ${name} (${actionLabel}${detail})`);
+
+              summaries.push({
+                name,
+                action: 'updated',
+                detail: outcome.result.commits ? `${outcome.result.commits} commits` : undefined,
+              });
+
+              if (!dryRun) {
+                localState = updateRepoLocalState(localState, outcome.entry.id, {
+                  lastSyncedAt: new Date().toISOString(),
+                });
+              }
+            } else if (outcome.result.status === 'skipped') {
+              log.message(`  ○ ${name} (${outcome.result.reason})`);
+              summaries.push({
+                name,
+                action: 'skipped',
+                detail: outcome.result.reason,
+              });
+            } else {
+              updateErrors += 1;
+              log.message(`  ✗ ${name} (${outcome.result.error})`);
+              summaries.push({
+                name,
+                action: 'error',
+                detail: outcome.result.error,
+              });
+            }
+          }
+
+          if (updateErrors > 0) {
+            progress.stop('Update completed with errors');
+            log.error('Update completed with errors');
+          } else {
+            progress.stop('Update complete');
+            log.success('Update complete');
+          }
+        }
+      }
+
+      // ═══════════════════════════════════════════════════════════════════
+      // PHASE 4: REFRESH METADATA (optional)
+      // ═══════════════════════════════════════════════════════════════════
+      if (!noticeCancellation() && args.refresh) {
+        p.log.step('Phase 4: Refreshing metadata from GitHub...');
+
+        const githubRepos = registry.repos.filter((r) => r.host === 'github.com');
+
+        if (githubRepos.length === 0) {
+          p.log.info('  No GitHub repos to refresh');
+        } else {
+          const progress = p.progress({
+            max: githubRepos.length,
+            style: 'heavy',
+            signal: syncOptions.signal,
+            onCancel: syncOptions.cancel,
+          });
+          const log = p.taskLog({
+            title: 'Refreshing metadata',
+            retainLog: true,
+            signal: syncOptions.signal,
+          });
+          let completed = 0;
+          let refreshErrors = 0;
+
+          progress.start('Refreshing metadata');
+
+          for await (const outcome of runWithConcurrency(
+            githubRepos,
+            syncOptions.concurrency,
+            async (entry) => {
+              if (dryRun) {
+                return { entry, status: 'dry-run' as const };
+              }
+
+              try {
+                const metadata = await fetchGitHubMetadata(entry.owner, entry.repo);
+                if (!metadata) {
+                  return { entry, status: 'missing' as const };
+                }
+                return { entry, status: 'ok' as const, metadata };
+              } catch (error) {
+                return { entry, status: 'error' as const, error };
+              }
+            },
+            syncOptions.signal
+          )) {
+            completed += 1;
+            progress.advance(1, `${completed}/${githubRepos.length} refreshed`);
+
+            const name = `${outcome.entry.owner}/${outcome.entry.repo}`;
+
+            if (outcome.status === 'dry-run') {
+              log.message(`  ↻ ${name} (would refresh)`);
+              summaries.push({ name, action: 'refreshed' });
+              continue;
+            }
+
+            if (outcome.status === 'missing') {
+              log.message(`  ○ ${name} (could not fetch)`);
+              continue;
+            }
+
+            if (outcome.status === 'error') {
+              refreshErrors += 1;
+              const message =
+                outcome.error instanceof Error ? outcome.error.message : String(outcome.error);
+              log.message(`  ✗ ${name} (${message})`);
+              continue;
+            }
+
+            const newDescription = outcome.metadata.description || undefined;
+            const newTags =
+              outcome.metadata.topics.length > 0 ? outcome.metadata.topics : undefined;
+
+            const descChanged = outcome.entry.description !== newDescription;
+            const tagsChanged = JSON.stringify(outcome.entry.tags) !== JSON.stringify(newTags);
+
+            if (descChanged || tagsChanged) {
+              registry = updateEntry(registry, outcome.entry.id, {
+                description: newDescription,
+                tags: newTags,
+              });
+              log.message(`  ↻ ${name} (refreshed)`);
+              summaries.push({ name, action: 'refreshed' });
+            } else {
+              log.message(`  ○ ${name} (unchanged)`);
+            }
+          }
+
+          if (refreshErrors > 0) {
+            progress.stop('Refresh completed with errors');
+            log.error('Refresh completed with errors');
+          } else {
+            progress.stop('Refresh complete');
+            log.success('Refresh complete');
+          }
+        }
+      }
+
+      // ═══════════════════════════════════════════════════════════════════
+      // SAVE & SUMMARY
+      // ═══════════════════════════════════════════════════════════════════
+      noticeCancellation();
+      if (!dryRun) {
+        await writeRegistry(registry);
+        // Update lastSyncRun and save local state
+        localState = updateLastSyncRun(localState);
+        await writeLocalState(localState);
+      }
+
+      console.log();
+      printSummary(summaries, dryRun);
+
+      p.outro(cancelled ? 'Cancelled' : 'Done!');
+    } finally {
+      cancellation.dispose();
     }
-
-    // ═══════════════════════════════════════════════════════════════════
-    // SAVE & SUMMARY
-    // ═══════════════════════════════════════════════════════════════════
-    if (!dryRun) {
-      await writeRegistry(registry);
-      // Update lastSyncRun and save local state
-      localState = updateLastSyncRun(localState);
-      await writeLocalState(localState);
-    }
-
-    console.log();
-    printSummary(summaries, dryRun);
-
-    p.outro('Done!');
   },
 });
 
@@ -527,7 +579,7 @@ interface CloneResult {
 
 async function clonePhase(
   registry: Registry,
-  options: { dryRun: boolean; concurrency?: number }
+  options: { dryRun: boolean; concurrency?: number; signal?: AbortSignal; cancel?: () => void }
 ): Promise<CloneResult> {
   const cloned: { owner: string; repo: string }[] = [];
   const errors: { name: string; error: string }[] = [];
@@ -560,22 +612,32 @@ async function clonePhase(
   }
 
   const concurrency = Math.min(Math.max(options.concurrency ?? 4, 1), targets.length);
-  const progress = p.progress({ max: targets.length, style: 'heavy' });
-  const log = p.taskLog({ title: 'Cloning repos', retainLog: true });
+  const progress = p.progress({
+    max: targets.length,
+    style: 'heavy',
+    signal: options.signal,
+    onCancel: options.cancel,
+  });
+  const log = p.taskLog({ title: 'Cloning repos', retainLog: true, signal: options.signal });
   let completed = 0;
 
   progress.start('Cloning repos');
 
-  for await (const result of runWithConcurrency(targets, concurrency, async (target) => {
-    try {
-      await cloneRepo(target.entry.cloneUrl, target.localPath, {
-        remoteName: target.entry.defaultRemoteName,
-      });
-      return { target, status: 'cloned' as const };
-    } catch (error) {
-      return { target, status: 'error' as const, error };
-    }
-  })) {
+  for await (const result of runWithConcurrency(
+    targets,
+    concurrency,
+    async (target) => {
+      try {
+        await cloneRepo(target.entry.cloneUrl, target.localPath, {
+          remoteName: target.entry.defaultRemoteName,
+        });
+        return { target, status: 'cloned' as const };
+      } catch (error) {
+        return { target, status: 'error' as const, error };
+      }
+    },
+    options.signal
+  )) {
     completed += 1;
     progress.advance(1, `${completed}/${targets.length} cloned`);
 

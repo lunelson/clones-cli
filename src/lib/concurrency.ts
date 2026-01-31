@@ -64,14 +64,27 @@ export function normalizeConcurrency(
 export async function* runWithConcurrency<TItem, TResult>(
   items: readonly TItem[],
   concurrency: number,
-  worker: (item: TItem) => Promise<TResult>
+  worker: (item: TItem) => Promise<TResult>,
+  signal?: AbortSignal
 ): AsyncGenerator<TResult, void, void> {
   const limit = Math.max(1, concurrency);
   const inFlight = new Set<Promise<TResult>>();
   let nextIndex = 0;
+  let cancelled = false;
+
+  const onAbort = () => {
+    cancelled = true;
+  };
+
+  if (signal) {
+    if (signal.aborted) {
+      return;
+    }
+    signal.addEventListener('abort', onAbort);
+  }
 
   const startNext = () => {
-    if (nextIndex >= items.length) return;
+    if (cancelled || nextIndex >= items.length) return;
     const item = items[nextIndex];
     nextIndex += 1;
 
@@ -80,16 +93,22 @@ export async function* runWithConcurrency<TItem, TResult>(
     inFlight.add(task);
   };
 
-  while (inFlight.size < limit && nextIndex < items.length) {
-    startNext();
-  }
-
-  while (inFlight.size > 0) {
-    const result = await Promise.race(inFlight);
-    yield result;
-
-    while (inFlight.size < limit && nextIndex < items.length) {
+  try {
+    while (!cancelled && inFlight.size < limit && nextIndex < items.length) {
       startNext();
+    }
+
+    while (inFlight.size > 0) {
+      const result = await Promise.race(inFlight);
+      yield result;
+
+      while (!cancelled && inFlight.size < limit && nextIndex < items.length) {
+        startNext();
+      }
+    }
+  } finally {
+    if (signal) {
+      signal.removeEventListener('abort', onAbort);
     }
   }
 }
