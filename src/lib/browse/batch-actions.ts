@@ -178,62 +178,62 @@ async function _batchEditTags(repos: RepoInfo[]): Promise<void> {
 export async function showBatchActions(repos: RepoInfo[]): Promise<void> {
   showReposSummary(repos);
 
-  while (true) {
-    const action = await p.select({
-      message: `Batch actions for ${repos.length} repositories`,
-      options: [
-        { value: 'copy-paths', label: 'Copy as path strings', hint: 'newline-separated with ~' },
-        { value: 'copy-json', label: 'Copy as JSON', hint: 'array of objects' },
-        { value: 'copy-md-list', label: 'Copy as markdown list', hint: '- owner/repo' },
-        { value: 'copy-md-table', label: 'Copy as markdown table', hint: '| repo | path | desc |' },
-        { value: 'open-editor', label: 'Open in editor', hint: 'spawn code for each' },
-        { value: 'back', label: 'Go back and clear filter' },
-        { value: 'exit', label: 'Exit' },
-      ],
-    });
+  const action = await p.select({
+    message: `Batch actions for ${repos.length} repositories`,
+    options: [
+      { value: 'copy-paths', label: 'Copy as path strings', hint: 'newline-separated with ~' },
+      { value: 'copy-json', label: 'Copy as JSON', hint: 'array of objects' },
+      { value: 'copy-md-list', label: 'Copy as markdown list', hint: '- owner/repo' },
+      { value: 'copy-md-table', label: 'Copy as markdown table', hint: '| repo | path | desc |' },
+      { value: 'open-editor', label: 'Open in editor', hint: 'spawn code for each' },
+      { value: 'browse', label: 'Browse again' },
+      { value: 'exit', label: 'Exit' },
+    ],
+  });
 
-    if (p.isCancel(action) || action === 'back') {
-      return;
+  if (p.isCancel(action) || action === 'browse') {
+    return;
+  }
+
+  if (action === 'exit') {
+    throw new ExitRequestedError();
+  }
+
+  switch (action) {
+    case 'copy-paths': {
+      const pathsText = formatPathsForClipboard(repos);
+      await copyToClipboard(pathsText);
+      p.log.success(`Copied ${repos.length} paths to clipboard`);
+      break;
     }
 
-    if (action === 'exit') {
-      throw new ExitRequestedError();
+    case 'copy-json': {
+      const jsonText = formatAsJson(repos);
+      await copyToClipboard(jsonText);
+      p.log.success(`Copied ${repos.length} repos as JSON to clipboard`);
+      break;
     }
 
-    switch (action) {
-      case 'copy-paths': {
-        const pathsText = formatPathsForClipboard(repos);
-        await copyToClipboard(pathsText);
-        p.log.success(`Copied ${repos.length} paths to clipboard`);
-        break;
-      }
+    case 'copy-md-list': {
+      const mdList = formatAsMarkdownList(repos);
+      await copyToClipboard(mdList);
+      p.log.success(`Copied ${repos.length} repos as markdown list to clipboard`);
+      break;
+    }
 
-      case 'copy-json': {
-        const jsonText = formatAsJson(repos);
-        await copyToClipboard(jsonText);
-        p.log.success(`Copied ${repos.length} repos as JSON to clipboard`);
-        break;
-      }
+    case 'copy-md-table': {
+      const mdTable = formatAsMarkdownTable(repos);
+      await copyToClipboard(mdTable);
+      p.log.success(`Copied ${repos.length} repos as markdown table to clipboard`);
+      break;
+    }
 
-      case 'copy-md-list': {
-        const mdList = formatAsMarkdownList(repos);
-        await copyToClipboard(mdList);
-        p.log.success(`Copied ${repos.length} repos as markdown list to clipboard`);
-        break;
-      }
-
-      case 'copy-md-table': {
-        const mdTable = formatAsMarkdownTable(repos);
-        await copyToClipboard(mdTable);
-        p.log.success(`Copied ${repos.length} repos as markdown table to clipboard`);
-        break;
-      }
-
-      case 'open-editor': {
-        openInEditor(repos);
-        p.log.success(`Opened ${repos.length} repos in VS Code`);
-        break;
-      }
+    case 'open-editor': {
+      openInEditor(repos);
+      p.log.success(`Opened ${repos.length} repos in VS Code`);
+      break;
     }
   }
+
+  throw new ExitRequestedError();
 }

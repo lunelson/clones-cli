@@ -1,14 +1,12 @@
 import { defineCommand } from 'citty';
 import * as p from '@clack/prompts';
 import type { Option } from '@clack/prompts';
-import { spawn } from 'node:child_process';
 import { readRegistry } from '../lib/registry.js';
-import { readLocalState, getLastSyncedAt } from '../lib/local-state.js';
 import { getRepoStatus } from '../lib/git.js';
 import { getRepoPath } from '../lib/config.js';
-import { toUserPath, formatRelativeTime, copyToClipboard } from '../lib/ui-utils.js';
 import { showBatchActions, type RepoInfo } from '../lib/browse/batch-actions.js';
 import { ExitRequestedError } from '../lib/browse/errors.js';
+import { showSingleRepoActions } from '../lib/browse/single-actions.js';
 import type { Registry } from '../types/index.js';
 
 function requestExit(): never {
@@ -118,90 +116,12 @@ async function browseRepos(registry: Registry): Promise<void> {
 
   // Branch based on selection count
   if (selected.length === 1) {
-    await showRepoDetails(selected[0]);
+    const result = await showSingleRepoActions(selected[0], 'browse');
+    if (result === 'browse') {
+      return;
+    }
+    requestExit();
   } else {
     await showBatchActions(selected);
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// REPO DETAILS & ACTIONS
-// ─────────────────────────────────────────────────────────────────────────────
-
-async function showRepoDetails(repo: RepoInfo): Promise<void> {
-  const shortPath = repo.localPath.replace(process.env.HOME || '', '~');
-
-  // Display repo info
-  console.log();
-  console.log(`  ${repo.entry.owner}/${repo.entry.repo}`);
-  console.log(`  ${'─'.repeat(40)}`);
-  console.log(`  Path: ${shortPath}`);
-  console.log(`  URL:  ${repo.entry.cloneUrl}`);
-
-  if (repo.entry.tags && repo.entry.tags.length > 0) {
-    console.log(`  Tags: ${repo.entry.tags.join(', ')}`);
-  } else {
-    console.log(`  Tags: (none)`);
-  }
-
-  if (repo.entry.description) {
-    console.log(`  Desc: ${repo.entry.description}`);
-  } else {
-    console.log(`  Desc: (none)`);
-  }
-
-  // Status
-  if (!repo.status.exists) {
-    console.log(`  Status: ✗ Missing`);
-  } else if (!repo.status.isGitRepo) {
-    console.log(`  Status: ✗ Not a git repo`);
-  } else if (repo.status.isDirty) {
-    console.log(`  Status: ● Dirty`);
-  } else {
-    console.log(`  Status: ✓ Clean`);
-  }
-
-  // Get lastSyncedAt from local state
-  const localState = await readLocalState();
-  const lastSyncedAt = getLastSyncedAt(localState, repo.entry.id);
-  if (lastSyncedAt) {
-    console.log(`  Synced: ${formatRelativeTime(lastSyncedAt)}`);
-  }
-
-  console.log();
-
-  // Action menu
-  const action = await p.select({
-    message: 'What would you like to do?',
-    options: [
-      { value: 'copy', label: 'Copy path to clipboard' },
-      { value: 'open', label: 'Open in editor' },
-      { value: 'back', label: 'Go back' },
-      { value: 'exit', label: 'Exit' },
-    ],
-  });
-
-  if (p.isCancel(action) || action === 'exit') {
-    requestExit();
-  }
-
-  if (action === 'back') {
-    return;
-  }
-
-  switch (action) {
-    case 'copy': {
-      const userPath = toUserPath(repo.localPath);
-      await copyToClipboard(userPath);
-      p.log.success(`Copied: ${userPath}`);
-      break;
-    }
-
-    case 'open': {
-      const editor = process.env.EDITOR || 'code';
-      spawn(editor, [repo.localPath], { detached: true, stdio: 'ignore' }).unref();
-      p.log.success(`Opened in ${editor}`);
-      break;
-    }
   }
 }

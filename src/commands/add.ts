@@ -13,6 +13,8 @@ import { GitCloneError, cloneRepo, getCloneErrorHints, getRepoStatus } from '../
 import { getRepoPath, DEFAULTS, ensureClonesDir } from '../lib/config.js';
 import { fetchGitHubMetadata } from '../lib/github.js';
 import type { Registry, LocalState, RegistryEntry } from '../types/index.js';
+import type { RepoInfo } from '../lib/browse/batch-actions.js';
+import { showSingleRepoActions } from '../lib/browse/single-actions.js';
 
 interface CloneOptions {
   tags?: string;
@@ -29,11 +31,19 @@ interface CloneContext {
   localState: LocalState;
 }
 
+type CloneOutcome = {
+  context: CloneContext;
+  added?: {
+    entry: RegistryEntry;
+    localPath: string;
+  };
+};
+
 async function cloneUrl(
   url: string,
   options: CloneOptions,
   context: CloneContext
-): Promise<CloneContext> {
+): Promise<CloneOutcome> {
   let { registry, localState } = context;
   let spinnerStarted = false;
   const s = p.spinner();
@@ -49,14 +59,14 @@ async function cloneUrl(
     if (findEntry(registry, repoId)) {
       p.log.error(`Repository already exists in registry: ${repoId}`);
       p.log.info("Use 'clones update' to sync it, or 'clones rm' to remove it first.");
-      return context;
+      return { context };
     }
 
     const status = await getRepoStatus(localPath);
     if (status.exists) {
       p.log.error(`Local directory already exists: ${localPath}`);
       p.log.info("Use 'clones adopt' to add existing repos to the registry.");
-      return context;
+      return { context };
     }
 
     await ensureClonesDir();
@@ -131,7 +141,7 @@ async function cloneUrl(
       p.log.info(`Tags: ${tags.join(', ')}`);
     }
 
-    return { registry, localState };
+    return { context: { registry, localState }, added: { entry, localPath } };
   } catch (error) {
     if (spinnerStarted) {
       s.stop(error instanceof GitCloneError ? 'Clone failed' : 'Failed');
@@ -142,11 +152,11 @@ async function cloneUrl(
       for (const hint of getCloneErrorHints(error)) {
         p.log.info(hint);
       }
-      return context;
+      return { context };
     }
 
     p.log.error(error instanceof Error ? error.message : String(error));
-    return context;
+    return { context };
   }
 }
 
@@ -222,7 +232,8 @@ export default defineCommand({
 
     if (urls.length > 0) {
       for (const url of urls) {
-        context = await cloneUrl(url, options, context);
+        const outcome = await cloneUrl(url, options, context);
+        context = outcome.context;
       }
       p.outro('Done!');
       return;
@@ -250,7 +261,23 @@ export default defineCommand({
         break;
       }
 
-      context = await cloneUrl(url, options, context);
+      const outcome = await cloneUrl(url, options, context);
+      context = outcome.context;
+
+      if (outcome.added) {
+        const status = await getRepoStatus(outcome.added.localPath);
+        const repoInfo: RepoInfo = {
+          entry: outcome.added.entry,
+          status,
+          localPath: outcome.added.localPath,
+        };
+
+        const action = await showSingleRepoActions(repoInfo, 'add');
+        if (action === 'add-another') {
+          continue;
+        }
+        break;
+      }
 
       const another = await p.confirm({ message: 'Add another?' });
       if (p.isCancel(another)) {
