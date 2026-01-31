@@ -10,6 +10,8 @@ const writeLocalState = vi.fn();
 const updateRepoLocalState = vi.fn();
 const cloneRepo = vi.fn();
 const getRepoStatus = vi.fn();
+class GitCloneError extends Error {}
+const getCloneErrorHints = vi.fn(() => []);
 const fetchGitHubMetadata = vi.fn();
 
 vi.mock('@clack/prompts', () => ({
@@ -41,6 +43,8 @@ vi.mock('../../src/lib/local-state.js', () => ({
 vi.mock('../../src/lib/git.js', () => ({
   cloneRepo,
   getRepoStatus,
+  GitCloneError,
+  getCloneErrorHints,
 }));
 
 vi.mock('../../src/lib/config.js', async () => {

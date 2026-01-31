@@ -1,8 +1,6 @@
 import { defineCommand } from 'citty';
 import * as p from '@clack/prompts';
-import { existsSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
-import { join } from 'node:path';
 import {
   readRegistry,
   writeRegistry,
@@ -18,6 +16,7 @@ import {
   updateLastSyncRun,
 } from '../lib/local-state.js';
 import {
+  GitCloneError,
   fetchWithPrune,
   resetHard,
   pullFastForward,
@@ -26,9 +25,10 @@ import {
   usesLfs,
   pullLfs,
   cloneRepo,
+  getCloneErrorHints,
   getRemoteUrl,
 } from '../lib/git.js';
-import { getRepoPath, getClonesDir, DEFAULTS } from '../lib/config.js';
+import { getRepoPath, DEFAULTS } from '../lib/config.js';
 import { scanClonesDir, isNestedRepo } from '../lib/scan.js';
 import { parseGitUrl, generateRepoId } from '../lib/url-parser.js';
 import { fetchGitHubMetadata } from '../lib/github.js';
@@ -438,10 +438,6 @@ async function clonePhase(registry: Registry, options: { dryRun: boolean }): Pro
       continue;
     }
 
-    // Track what exists before clone for rollback
-    const ownerDir = join(getClonesDir(), entry.owner);
-    const ownerExistedBefore = existsSync(ownerDir);
-
     // Clone the repo
     const s = p.spinner();
     s.start(`  Cloning ${name}...`);
@@ -454,13 +450,9 @@ async function clonePhase(registry: Registry, options: { dryRun: boolean }): Pro
       cloned.push({ owner: entry.owner, repo: entry.repo });
     } catch (error) {
       s.stop(`  ✗ ${name} (clone failed)`);
-
-      // Rollback: remove directories created by the failed clone
-      if (!ownerExistedBefore && existsSync(ownerDir)) {
-        try {
-          await rm(ownerDir, { recursive: true, force: true });
-        } catch {
-          // Ignore cleanup errors
+      if (error instanceof GitCloneError) {
+        for (const hint of getCloneErrorHints(error)) {
+          p.log.info(`    ${hint}`);
         }
       }
 

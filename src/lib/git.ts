@@ -1,7 +1,71 @@
 import { simpleGit, type StatusResult } from 'simple-git';
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdir, mkdtemp, readdir, rename, rm } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import type { RepoStatus } from '../types/index.js';
+
+const CLONE_TIMEOUT_MS = 60_000;
+
+export class GitCloneError extends Error {
+  readonly isTimeout: boolean;
+  readonly isAuthError: boolean;
+  readonly isNotFound: boolean;
+
+  constructor(
+    message: string,
+    options: { isTimeout?: boolean; isAuthError?: boolean; isNotFound?: boolean } = {}
+  ) {
+    super(message);
+    this.name = 'GitCloneError';
+    this.isTimeout = options.isTimeout ?? false;
+    this.isAuthError = options.isAuthError ?? false;
+    this.isNotFound = options.isNotFound ?? false;
+  }
+}
+
+export function getCloneErrorHints(error: GitCloneError): string[] {
+  const hints: string[] = [];
+
+  if (error.isTimeout) {
+    hints.push('Clone timed out: check network access or try again later.');
+  }
+
+  if (error.isAuthError) {
+    hints.push('Authentication failed: verify SSH keys or HTTPS credentials.');
+  }
+
+  if (error.isNotFound) {
+    hints.push('Repository not found or you do not have access.');
+  }
+
+  return hints;
+}
+
+function classifyCloneError(error: unknown): GitCloneError {
+  const message = error instanceof Error ? error.message : String(error);
+  const lower = message.toLowerCase();
+  const isTimeout = lower.includes('timeout') || lower.includes('timed out');
+  const isAuthError =
+    lower.includes('authentication failed') ||
+    lower.includes('permission denied') ||
+    lower.includes('publickey') ||
+    lower.includes('could not read from remote repository') ||
+    lower.includes('access denied');
+  const isNotFound = lower.includes('repository not found') || lower.includes('not found');
+
+  return new GitCloneError(message, { isTimeout, isAuthError, isNotFound });
+}
+
+async function removeDirIfEmpty(dir: string): Promise<void> {
+  try {
+    const entries = await readdir(dir);
+    if (entries.length === 0) {
+      await rm(dir, { recursive: true, force: true });
+    }
+  } catch {
+    // Ignore cleanup errors
+  }
+}
 
 /**
  * Clone a repository to a local path
@@ -18,8 +82,10 @@ export async function cloneRepo(
     allBranches?: boolean;
   } = {}
 ): Promise<void> {
-  const git = simpleGit();
+  const git = simpleGit({ timeout: { block: CLONE_TIMEOUT_MS } });
   const remoteName = options.remoteName || 'origin';
+  const parentDir = dirname(localPath);
+  const parentExisted = existsSync(parentDir);
 
   const cloneArgs: string[] = ['--origin', remoteName];
 
@@ -33,7 +99,28 @@ export async function cloneRepo(
     cloneArgs.push('--single-branch');
   }
 
-  await git.clone(url, localPath, cloneArgs);
+  if (!parentExisted) {
+    await mkdir(parentDir, { recursive: true });
+  }
+
+  const tempDir = await mkdtemp(join(parentDir, '.clone-'));
+
+  try {
+    await git.clone(url, tempDir, cloneArgs);
+    await rename(tempDir, localPath);
+  } catch (error) {
+    try {
+      await rm(tempDir, { recursive: true, force: true });
+    } catch {
+      // Ignore cleanup errors
+    }
+
+    if (!parentExisted) {
+      await removeDirIfEmpty(parentDir);
+    }
+
+    throw classifyCloneError(error);
+  }
 }
 
 /**

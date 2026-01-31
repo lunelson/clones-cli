@@ -9,6 +9,8 @@ const isNestedRepo = vi.fn();
 const getRemoteUrl = vi.fn();
 const getRepoStatus = vi.fn();
 const rm = vi.fn();
+class GitCloneError extends Error {}
+const getCloneErrorHints = vi.fn(() => []);
 
 vi.mock('@clack/prompts', () => ({
   intro: vi.fn(),
@@ -59,6 +61,8 @@ vi.mock('../../src/lib/git.js', () => ({
   usesLfs: vi.fn(),
   pullLfs: vi.fn(),
   cloneRepo: vi.fn(),
+  GitCloneError,
+  getCloneErrorHints,
   getRemoteUrl,
   getRepoStatus,
 }));

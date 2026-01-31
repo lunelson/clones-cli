@@ -1,8 +1,5 @@
 import { defineCommand } from 'citty';
 import * as p from '@clack/prompts';
-import { existsSync } from 'node:fs';
-import { rm } from 'node:fs/promises';
-import { join } from 'node:path';
 import { parseGitUrl, generateRepoId } from '../lib/url-parser.js';
 import {
   readRegistry,
@@ -12,8 +9,8 @@ import {
   removeTombstone,
 } from '../lib/registry.js';
 import { readLocalState, writeLocalState, updateRepoLocalState } from '../lib/local-state.js';
-import { cloneRepo, getRepoStatus } from '../lib/git.js';
-import { getRepoPath, getClonesDir, DEFAULTS, ensureClonesDir } from '../lib/config.js';
+import { GitCloneError, cloneRepo, getCloneErrorHints, getRepoStatus } from '../lib/git.js';
+import { getRepoPath, DEFAULTS, ensureClonesDir } from '../lib/config.js';
 import { fetchGitHubMetadata } from '../lib/github.js';
 import type { Registry, LocalState, RegistryEntry } from '../types/index.js';
 
@@ -80,30 +77,13 @@ async function cloneUrl(
       }
     }
 
-    const ownerDir = join(getClonesDir(), parsed.owner);
-    const ownerExistedBefore = existsSync(ownerDir);
-
     s.start(`Cloning ${parsed.owner}/${parsed.repo}...`);
     spinnerStarted = true;
 
-    try {
-      await cloneRepo(parsed.cloneUrl, localPath, {
-        fullHistory: options.full,
-        allBranches: options.allBranches,
-      });
-    } catch (cloneError) {
-      s.stop('Clone failed');
-
-      if (!ownerExistedBefore && existsSync(ownerDir)) {
-        try {
-          await rm(ownerDir, { recursive: true, force: true });
-        } catch {
-          // Ignore cleanup errors
-        }
-      }
-
-      throw cloneError;
-    }
+    await cloneRepo(parsed.cloneUrl, localPath, {
+      fullHistory: options.full,
+      allBranches: options.allBranches,
+    });
 
     s.stop(`Cloned to ${localPath}`);
 
@@ -154,8 +134,17 @@ async function cloneUrl(
     return { registry, localState };
   } catch (error) {
     if (spinnerStarted) {
-      s.stop('Failed');
+      s.stop(error instanceof GitCloneError ? 'Clone failed' : 'Failed');
     }
+
+    if (error instanceof GitCloneError) {
+      p.log.error(error.message);
+      for (const hint of getCloneErrorHints(error)) {
+        p.log.info(hint);
+      }
+      return context;
+    }
+
     p.log.error(error instanceof Error ? error.message : String(error));
     return context;
   }
