@@ -93,6 +93,9 @@ clones sync --refresh        # Re-fetch metadata from GitHub
 clones sync --concurrency 6  # Parallel git operations (default: 4, max: 10)
 ```
 
+You can cancel long-running sync operations with `Esc` or `Ctrl+C`. Cancellation stops
+new work from starting but allows in-flight git operations to finish safely.
+
 **Update strategies** (per-repo, set on add):
 
 - `hard-reset` (default): Reset to upstream, discarding local changes

@@ -40,6 +40,12 @@ Optional behaviors to consider:
 - Auto-rename folder to match the remote (with safeguards).
 - Adopt using the remote identity but keep path (explicit warning).
 
+### Hard cancel in-flight git operations
+
+Cancellation currently prevents new work from starting, but in-flight git operations
+continue until they complete. Consider switching to subprocess-based git execution
+with AbortSignal support to terminate long-running operations.
+
 ## Context
 
 - Original remediation notes live in `clones-cli-review.md`.
