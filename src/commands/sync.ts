@@ -268,38 +268,80 @@ export default defineCommand({
       if (githubRepos.length === 0) {
         p.log.info('  No GitHub repos to refresh');
       } else {
-        for (const entry of githubRepos) {
-          const name = `${entry.owner}/${entry.repo}`;
+        const progress = p.progress({ max: githubRepos.length, style: 'heavy' });
+        const log = p.taskLog({ title: 'Refreshing metadata', retainLog: true });
+        let completed = 0;
+        let refreshErrors = 0;
 
-          if (dryRun) {
-            p.log.info(`  ↻ ${name} (would refresh)`);
+        progress.start('Refreshing metadata');
+
+        for await (const outcome of runWithConcurrency(
+          githubRepos,
+          syncOptions.concurrency,
+          async (entry) => {
+            if (dryRun) {
+              return { entry, status: 'dry-run' as const };
+            }
+
+            try {
+              const metadata = await fetchGitHubMetadata(entry.owner, entry.repo);
+              if (!metadata) {
+                return { entry, status: 'missing' as const };
+              }
+              return { entry, status: 'ok' as const, metadata };
+            } catch (error) {
+              return { entry, status: 'error' as const, error };
+            }
+          }
+        )) {
+          completed += 1;
+          progress.advance(1, `${completed}/${githubRepos.length} refreshed`);
+
+          const name = `${outcome.entry.owner}/${outcome.entry.repo}`;
+
+          if (outcome.status === 'dry-run') {
+            log.message(`  ↻ ${name} (would refresh)`);
             summaries.push({ name, action: 'refreshed' });
             continue;
           }
 
-          const metadata = await fetchGitHubMetadata(entry.owner, entry.repo);
-
-          if (metadata) {
-            const newDescription = metadata.description || undefined;
-            const newTags = metadata.topics.length > 0 ? metadata.topics : undefined;
-
-            // Only update if something changed
-            const descChanged = entry.description !== newDescription;
-            const tagsChanged = JSON.stringify(entry.tags) !== JSON.stringify(newTags);
-
-            if (descChanged || tagsChanged) {
-              registry = updateEntry(registry, entry.id, {
-                description: newDescription,
-                tags: newTags,
-              });
-              p.log.info(`  ↻ ${name} (refreshed)`);
-              summaries.push({ name, action: 'refreshed' });
-            } else {
-              p.log.info(`  ○ ${name} (unchanged)`);
-            }
-          } else {
-            p.log.warn(`  ○ ${name} (could not fetch)`);
+          if (outcome.status === 'missing') {
+            log.message(`  ○ ${name} (could not fetch)`);
+            continue;
           }
+
+          if (outcome.status === 'error') {
+            refreshErrors += 1;
+            const message =
+              outcome.error instanceof Error ? outcome.error.message : String(outcome.error);
+            log.message(`  ✗ ${name} (${message})`);
+            continue;
+          }
+
+          const newDescription = outcome.metadata.description || undefined;
+          const newTags = outcome.metadata.topics.length > 0 ? outcome.metadata.topics : undefined;
+
+          const descChanged = outcome.entry.description !== newDescription;
+          const tagsChanged = JSON.stringify(outcome.entry.tags) !== JSON.stringify(newTags);
+
+          if (descChanged || tagsChanged) {
+            registry = updateEntry(registry, outcome.entry.id, {
+              description: newDescription,
+              tags: newTags,
+            });
+            log.message(`  ↻ ${name} (refreshed)`);
+            summaries.push({ name, action: 'refreshed' });
+          } else {
+            log.message(`  ○ ${name} (unchanged)`);
+          }
+        }
+
+        if (refreshErrors > 0) {
+          progress.stop('Refresh completed with errors');
+          log.error('Refresh completed with errors');
+        } else {
+          progress.stop('Refresh complete');
+          log.success('Refresh complete');
         }
       }
     }
