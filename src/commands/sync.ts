@@ -32,7 +32,7 @@ import { getRepoPath, DEFAULTS } from '../lib/config.js';
 import { scanClonesDir, isNestedRepo } from '../lib/scan.js';
 import { parseGitUrl, generateRepoId } from '../lib/url-parser.js';
 import { fetchGitHubMetadata } from '../lib/github.js';
-import { normalizeConcurrency } from '../lib/concurrency.js';
+import { normalizeConcurrency, runWithConcurrency } from '../lib/concurrency.js';
 import type { RegistryEntry, UpdateResult, Registry } from '../types/index.js';
 
 interface UpdateSummary {
@@ -444,9 +444,13 @@ interface CloneResult {
   errors: { name: string; error: string }[];
 }
 
-async function clonePhase(registry: Registry, options: { dryRun: boolean }): Promise<CloneResult> {
+async function clonePhase(
+  registry: Registry,
+  options: { dryRun: boolean; concurrency?: number }
+): Promise<CloneResult> {
   const cloned: { owner: string; repo: string }[] = [];
   const errors: { name: string; error: string }[] = [];
+  const targets: { entry: RegistryEntry; localPath: string; name: string }[] = [];
 
   for (const entry of registry.repos) {
     if (!entry.managed) continue;
@@ -459,37 +463,61 @@ async function clonePhase(registry: Registry, options: { dryRun: boolean }): Pro
     }
 
     const name = `${entry.owner}/${entry.repo}`;
+    targets.push({ entry, localPath, name });
+  }
 
-    if (options.dryRun) {
-      p.log.info(`  + ${name} (would clone)`);
-      cloned.push({ owner: entry.owner, repo: entry.repo });
-      continue;
+  if (options.dryRun) {
+    for (const target of targets) {
+      p.log.info(`  + ${target.name} (would clone)`);
+      cloned.push({ owner: target.entry.owner, repo: target.entry.repo });
     }
+    return { cloned, errors };
+  }
 
-    // Clone the repo
-    const s = p.spinner();
-    s.start(`  Cloning ${name}...`);
+  if (targets.length === 0) {
+    return { cloned, errors };
+  }
 
+  const concurrency = Math.min(Math.max(options.concurrency ?? 4, 1), targets.length);
+  const progress = p.progress({ max: targets.length, style: 'heavy' });
+  const log = p.taskLog({ title: 'Cloning repos', retainLog: true });
+  let completed = 0;
+
+  progress.start('Cloning repos');
+
+  for await (const result of runWithConcurrency(targets, concurrency, async (target) => {
     try {
-      await cloneRepo(entry.cloneUrl, localPath, {
-        remoteName: entry.defaultRemoteName,
+      await cloneRepo(target.entry.cloneUrl, target.localPath, {
+        remoteName: target.entry.defaultRemoteName,
       });
-      s.stop(`  + ${name} (cloned)`);
-      cloned.push({ owner: entry.owner, repo: entry.repo });
+      return { target, status: 'cloned' as const };
     } catch (error) {
-      s.stop(`  ✗ ${name} (clone failed)`);
+      return { target, status: 'error' as const, error };
+    }
+  })) {
+    completed += 1;
+    progress.advance(1, `${completed}/${targets.length} cloned`);
+
+    if (result.status === 'cloned') {
+      cloned.push({ owner: result.target.entry.owner, repo: result.target.entry.repo });
+      log.message(`  ✓ ${result.target.name} (cloned)`);
+    } else {
+      const error = result.error;
+      log.message(`  ✗ ${result.target.name} (clone failed)`);
       if (error instanceof GitCloneError) {
         for (const hint of getCloneErrorHints(error)) {
-          p.log.info(`    ${hint}`);
+          log.message(`    ${hint}`);
         }
       }
-
       errors.push({
-        name,
+        name: result.target.name,
         error: error instanceof Error ? error.message : String(error),
       });
     }
   }
+
+  progress.stop('Cloning complete');
+  log.success('Cloning complete');
 
   return { cloned, errors };
 }

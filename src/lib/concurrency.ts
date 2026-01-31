@@ -60,3 +60,36 @@ export function normalizeConcurrency(
 
   return { value: rounded };
 }
+
+export async function* runWithConcurrency<TItem, TResult>(
+  items: readonly TItem[],
+  concurrency: number,
+  worker: (item: TItem) => Promise<TResult>
+): AsyncGenerator<TResult, void, void> {
+  const limit = Math.max(1, concurrency);
+  const inFlight = new Set<Promise<TResult>>();
+  let nextIndex = 0;
+
+  const startNext = () => {
+    if (nextIndex >= items.length) return;
+    const item = items[nextIndex];
+    nextIndex += 1;
+
+    const task = worker(item);
+    task.finally(() => inFlight.delete(task));
+    inFlight.add(task);
+  };
+
+  while (inFlight.size < limit && nextIndex < items.length) {
+    startNext();
+  }
+
+  while (inFlight.size > 0) {
+    const result = await Promise.race(inFlight);
+    yield result;
+
+    while (inFlight.size < limit && nextIndex < items.length) {
+      startNext();
+    }
+  }
+}

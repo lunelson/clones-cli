@@ -16,6 +16,20 @@ vi.mock('@clack/prompts', () => ({
   intro: vi.fn(),
   outro: vi.fn(),
   spinner: () => ({ start: vi.fn(), stop: vi.fn() }),
+  progress: () => ({
+    start: vi.fn(),
+    advance: vi.fn(),
+    message: vi.fn(),
+    stop: vi.fn(),
+    cancel: vi.fn(),
+    error: vi.fn(),
+    clear: vi.fn(),
+  }),
+  taskLog: () => ({
+    message: vi.fn(),
+    success: vi.fn(),
+    error: vi.fn(),
+  }),
   log: {
     info: vi.fn(),
     error: vi.fn(),
