@@ -141,4 +141,35 @@ describe('clones sync tombstones', () => {
     expect(writtenRegistry.repos).toHaveLength(0);
     expect(writtenRegistry.tombstones).toContain('github.com:owner/repo');
   });
+
+  it('skips adoption when remote owner/repo mismatches path', async () => {
+    readRegistry.mockResolvedValue({
+      version: '1.0.0',
+      repos: [],
+      tombstones: [],
+    });
+    readLocalState.mockResolvedValue({ version: '1.0.0', repos: {} });
+    scanClonesDir.mockResolvedValue({
+      discovered: [{ owner: 'owner', repo: 'repo', localPath: '/tmp/owner/repo' }],
+      skipped: [],
+    });
+    isNestedRepo.mockResolvedValue(false);
+    getRemoteUrl.mockResolvedValue('https://github.com/other/other-repo.git');
+    getRepoStatus.mockResolvedValue({
+      exists: true,
+      isGitRepo: true,
+      currentBranch: 'main',
+      isDetached: false,
+      tracking: 'origin/main',
+      ahead: 0,
+      behind: 0,
+      isDirty: false,
+    });
+
+    await syncCommand.run?.({ args: {} } as any);
+
+    const writtenRegistry = writeRegistry.mock.calls[0][0];
+    expect(writtenRegistry.repos).toHaveLength(0);
+    expect(rm).not.toHaveBeenCalled();
+  });
 });

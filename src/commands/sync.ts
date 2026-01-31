@@ -327,6 +327,20 @@ async function adoptPhase(
     }
 
     const repoId = generateRepoId(parsed);
+    const pathOwner = repo.owner.toLowerCase();
+    const pathRepo = repo.repo.toLowerCase();
+
+    if (pathOwner !== parsed.owner || pathRepo !== parsed.repo) {
+      skipped.push({
+        owner: repo.owner,
+        repo: repo.repo,
+        reason: `remote mismatch (${parsed.owner}/${parsed.repo})`,
+      });
+      p.log.warn(
+        `  ○ ${repo.owner}/${repo.repo} (remote mismatch: ${parsed.owner}/${parsed.repo})`
+      );
+      continue;
+    }
 
     if (registry.tombstones.includes(repoId)) {
       if (options.keep) {
