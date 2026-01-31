@@ -32,6 +32,7 @@ import { getRepoPath, DEFAULTS } from '../lib/config.js';
 import { scanClonesDir, isNestedRepo } from '../lib/scan.js';
 import { parseGitUrl, generateRepoId } from '../lib/url-parser.js';
 import { fetchGitHubMetadata } from '../lib/github.js';
+import { normalizeConcurrency } from '../lib/concurrency.js';
 import type { RegistryEntry, UpdateResult, Registry } from '../types/index.js';
 
 interface UpdateSummary {
@@ -66,6 +67,10 @@ export default defineCommand({
       type: 'boolean',
       description: 'Refresh metadata (description, tags) from GitHub for all repos',
     },
+    concurrency: {
+      type: 'string',
+      description: 'Number of parallel git operations (default: 4, max: 10)',
+    },
   },
   async run({ args }) {
     p.intro('clones sync');
@@ -73,6 +78,15 @@ export default defineCommand({
     const dryRun = args['dry-run'] || false;
     const force = args.force || false;
     const keep = args.keep || false;
+    const { value: concurrency, warning: concurrencyWarning } = normalizeConcurrency(
+      args.concurrency
+    );
+
+    if (concurrencyWarning) {
+      p.log.warn(concurrencyWarning);
+    }
+
+    const syncOptions = { dryRun, force, keep, concurrency };
 
     if (dryRun) {
       p.log.warn('Dry run mode - no changes will be made');
@@ -92,7 +106,7 @@ export default defineCommand({
       removed,
       skipped: adoptSkipped,
       registry: registryAfterAdopt,
-    } = await adoptPhase(registry, { dryRun, force, keep });
+    } = await adoptPhase(registry, syncOptions);
     registry = registryAfterAdopt;
 
     for (const repo of adopted) {
@@ -136,7 +150,7 @@ export default defineCommand({
     // ═══════════════════════════════════════════════════════════════════
     p.log.step('Phase 2: Cloning missing repos...');
 
-    const { cloned, errors: cloneErrors } = await clonePhase(registry, { dryRun });
+    const { cloned, errors: cloneErrors } = await clonePhase(registry, syncOptions);
 
     for (const repo of cloned) {
       summaries.push({
@@ -181,7 +195,7 @@ export default defineCommand({
       p.log.info('  No repos to update');
     } else {
       for (const entry of reposToUpdate) {
-        const result = await updateRepo(entry, { dryRun, force });
+        const result = await updateRepo(entry, syncOptions);
         const name = `${entry.owner}/${entry.repo}`;
 
         if (result.status === 'updated') {
