@@ -15,6 +15,10 @@
 
 Every batch of changes must follow this verification-gated loop. **Run gates in order (cheapest to most expensive), stop on first failure, fix, then restart from step 1.**
 
+### Verification Harness (Required)
+
+For every new piece of software, layer of enablement, utility, routine, or sub-routine, design a verification harness that gives a clear, high-confidence signal that it works correctly and aligns with the intended scope. Treat this harness as scaffolding for intent and focus; do not proceed to subsequent work without establishing it.
+
 ### Verification Order
 
 | Step            | Command                | Purpose                        |
