@@ -10,6 +10,9 @@ const testDir = join(tmpdir(), `clones-test-${randomUUID()}`);
 vi.mock('../../src/lib/config.js', () => ({
   getClonesDir: () => testDir,
 }));
+vi.mock('../../src/lib/path-utils.js', () => ({
+  isSafePathSegment: (segment: string) => segment !== 'unsafe',
+}));
 
 // Import after mocking
 const { scanClonesDir, isNestedRepo } = await import('../../src/lib/scan.js');
@@ -68,6 +71,18 @@ describe('scanClonesDir', () => {
 
     expect(result.discovered).toHaveLength(1);
     expect(result.discovered[0].repo).toBe('visible-repo');
+  });
+
+  it('skips unsafe owner or repo segments', async () => {
+    await mkdir(join(testDir, 'unsafe', 'repo', '.git'), { recursive: true });
+    await mkdir(join(testDir, 'owner', 'unsafe', '.git'), { recursive: true });
+    await mkdir(join(testDir, 'owner', 'safe-repo', '.git'), { recursive: true });
+
+    const result = await scanClonesDir();
+
+    expect(result.discovered).toHaveLength(1);
+    expect(result.discovered[0].repo).toBe('safe-repo');
+    expect(result.skipped.some((s) => s.path.includes('unsafe'))).toBe(true);
   });
 
   it('skips registry.json at root level', async () => {

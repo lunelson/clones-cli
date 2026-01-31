@@ -2,6 +2,7 @@ import { readdir, stat, lstat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
 import { getClonesDir } from './config.js';
+import { isSafePathSegment } from './path-utils.js';
 
 /**
  * Represents a discovered repository on disk
@@ -76,6 +77,10 @@ export async function scanClonesDir(): Promise<ScanResult> {
     if (owner.startsWith('.') || owner === 'registry.json') {
       continue;
     }
+    if (!isSafePathSegment(owner)) {
+      skipped.push({ path: join(clonesDir, owner), reason: 'Unsafe path segment' });
+      continue;
+    }
 
     const ownerPath = join(clonesDir, owner);
 
@@ -105,6 +110,10 @@ export async function scanClonesDir(): Promise<ScanResult> {
     for (const repo of repoDirs) {
       // Skip hidden directories
       if (repo.startsWith('.')) {
+        continue;
+      }
+      if (!isSafePathSegment(repo)) {
+        skipped.push({ path: join(ownerPath, repo), reason: 'Unsafe path segment' });
         continue;
       }
 

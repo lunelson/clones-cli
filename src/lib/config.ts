@@ -2,6 +2,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { mkdir } from 'node:fs/promises';
 import { existsSync, readFileSync } from 'node:fs';
+import { assertPathInsideBase, assertSafePathSegment } from './path-utils.js';
 
 function getConfigPath(): string {
   return join(getConfigDir(), 'config.json');
@@ -61,7 +62,13 @@ export function getLocalStatePath(): string {
  * Get the local path for a repository based on owner/repo
  */
 export function getRepoPath(owner: string, repo: string): string {
-  return join(getClonesDir(), owner, repo);
+  assertSafePathSegment(owner, 'owner');
+  assertSafePathSegment(repo, 'repo');
+
+  const base = getClonesDir();
+  const repoPath = join(base, owner, repo);
+  assertPathInsideBase(base, repoPath);
+  return repoPath;
 }
 
 /**
