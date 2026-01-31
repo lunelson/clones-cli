@@ -154,10 +154,21 @@ You can customize paths via environment variables:
 ```bash
 export CLONES_CONTENT_DIR="$HOME/Clones"      # default
 export CLONES_CONFIG_DIR="$HOME/.config/clones"
+export CLONES_SYNC_CONCURRENCY="4"           # default sync workers
 ```
 
 `CLONES_CONFIG_DIR` overrides `XDG_CONFIG_HOME` for config location. `CLONES_CONTENT_DIR` is the root directory where repositories are cloned.
 `CLONES_DIR` is deprecated but still supported as a fallback for `CLONES_CONTENT_DIR`.
+
+You can also set a default concurrency in `~/.config/clones/config.json`:
+
+```json
+{
+  "sync": {
+    "concurrency": 4
+  }
+}
+```
 
 ## Clone Behavior
 

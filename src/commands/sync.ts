@@ -28,7 +28,7 @@ import {
   getCloneErrorHints,
   getRemoteUrl,
 } from '../lib/git.js';
-import { getRepoPath, DEFAULTS } from '../lib/config.js';
+import { getRepoPath, DEFAULTS, getSyncConcurrency } from '../lib/config.js';
 import { scanClonesDir, isNestedRepo } from '../lib/scan.js';
 import { parseGitUrl, generateRepoId } from '../lib/url-parser.js';
 import { fetchGitHubMetadata } from '../lib/github.js';
@@ -78,10 +78,19 @@ export default defineCommand({
     const dryRun = args['dry-run'] || false;
     const force = args.force || false;
     const keep = args.keep || false;
+    const configConcurrency = getSyncConcurrency();
+    const normalizedConfigConcurrency = normalizeConcurrency(configConcurrency, {
+      defaultValue: 4,
+    });
+    if (configConcurrency !== undefined && normalizedConfigConcurrency.warning) {
+      p.log.warn(normalizedConfigConcurrency.warning);
+    }
     const { value: concurrency, warning: concurrencyWarning } = normalizeConcurrency(
-      args.concurrency
+      args.concurrency,
+      {
+        defaultValue: normalizedConfigConcurrency.value,
+      }
     );
-
     if (concurrencyWarning) {
       p.log.warn(concurrencyWarning);
     }

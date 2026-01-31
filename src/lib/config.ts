@@ -8,7 +8,15 @@ function getConfigPath(): string {
   return join(getConfigDir(), 'config.json');
 }
 
-function loadConfigSync(): { contentDir?: string } | null {
+type ConfigFile = {
+  contentDir?: string;
+  sync?: {
+    concurrency?: number;
+  };
+  syncConcurrency?: number;
+};
+
+function loadConfigSync(): ConfigFile | null {
   try {
     const configPath = getConfigPath();
     if (!existsSync(configPath)) return null;
@@ -29,6 +37,28 @@ export function getClonesDir(): string {
   if (config?.contentDir) return config.contentDir;
 
   return join(homedir(), 'Clones');
+}
+
+/**
+ * Get the default sync concurrency from env or config.
+ */
+export function getSyncConcurrency(): number | undefined {
+  const env = process.env.CLONES_SYNC_CONCURRENCY;
+  if (env) {
+    const parsed = Number.parseInt(env, 10);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+
+  const config = loadConfigSync();
+  if (config?.sync && typeof config.sync.concurrency === 'number') {
+    return config.sync.concurrency;
+  }
+
+  if (typeof config?.syncConcurrency === 'number') {
+    return config.syncConcurrency;
+  }
+
+  return undefined;
 }
 
 /**
