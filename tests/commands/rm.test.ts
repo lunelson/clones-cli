@@ -10,12 +10,14 @@ const writeLocalState = vi.fn();
 const removeRepoLocalState = vi.fn();
 const getRepoPath = vi.fn(() => '/tmp/owner/repo');
 
-vi.mock('@clack/prompts', () => ({
+const prompts = vi.hoisted(() => ({
   intro: vi.fn(),
   outro: vi.fn(),
   confirm: vi.fn(),
-  isCancel: vi.fn(),
-  spinner: () => ({ start: vi.fn(), stop: vi.fn() }),
+  isCancel: vi.fn(() => false),
+  cancel: vi.fn(),
+  autocompleteMultiselect: vi.fn(),
+  spinner: vi.fn(() => ({ start: vi.fn(), stop: vi.fn() })),
   log: {
     info: vi.fn(),
     error: vi.fn(),
@@ -24,6 +26,17 @@ vi.mock('@clack/prompts', () => ({
     message: vi.fn(),
     step: vi.fn(),
   },
+}));
+
+vi.mock('@clack/prompts', () => ({
+  intro: prompts.intro,
+  outro: prompts.outro,
+  confirm: prompts.confirm,
+  isCancel: prompts.isCancel,
+  cancel: prompts.cancel,
+  autocompleteMultiselect: prompts.autocompleteMultiselect,
+  spinner: prompts.spinner,
+  log: prompts.log,
 }));
 
 vi.mock('../../src/lib/registry.js', () => ({
@@ -87,5 +100,7 @@ describe('clones rm', () => {
     const updatedRegistry = writeRegistry.mock.calls[0][0];
     expect(updatedRegistry.tombstones).toContain(entry.id);
     expect(writeLocalState).toHaveBeenCalledTimes(1);
+    expect(prompts.confirm).not.toHaveBeenCalled();
+    expect(prompts.autocompleteMultiselect).not.toHaveBeenCalled();
   });
 });

@@ -146,6 +146,8 @@ describe('clones add', () => {
       },
     } as any);
 
+    expect(prompts.text).not.toHaveBeenCalled();
+    expect(prompts.confirm).not.toHaveBeenCalled();
     expect(removeTombstone).toHaveBeenCalled();
     expect(writeLocalState).toHaveBeenCalledTimes(1);
     expect(browseActions.showSingleRepoActions).not.toHaveBeenCalled();

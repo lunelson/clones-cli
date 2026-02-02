@@ -9,6 +9,23 @@ const getClonesDir = vi.fn(() => '/tmp');
 const readLocalState = vi.fn();
 const getLastSyncedAt = vi.fn((state: any, repoId: string) => state.repos[repoId]?.lastSyncedAt);
 
+const prompts = vi.hoisted(() => ({
+  intro: vi.fn(),
+  outro: vi.fn(),
+  log: {
+    info: vi.fn(),
+    error: vi.fn(),
+    warn: vi.fn(),
+    success: vi.fn(),
+  },
+}));
+
+vi.mock('@clack/prompts', () => ({
+  intro: prompts.intro,
+  outro: prompts.outro,
+  log: prompts.log,
+}));
+
 vi.mock('../../src/lib/registry.js', () => ({
   readRegistry,
   filterByTags,
@@ -83,6 +100,8 @@ describe('clones list', () => {
     const parsed = JSON.parse(output);
 
     expect(parsed.repos[0].lastSyncedAt).toBe('2026-01-03T00:00:00Z');
+    expect(prompts.intro).not.toHaveBeenCalled();
+    expect(prompts.outro).not.toHaveBeenCalled();
   });
 
   it("prints 'last sync never' when local state has no lastSyncRun", async () => {
@@ -117,5 +136,7 @@ describe('clones list', () => {
 
     const calls = (console.log as unknown as vi.Mock).mock.calls.flat().join('\n');
     expect(calls).toContain('last sync never');
+    expect(prompts.intro).not.toHaveBeenCalled();
+    expect(prompts.outro).not.toHaveBeenCalled();
   });
 });
