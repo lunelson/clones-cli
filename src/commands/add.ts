@@ -276,7 +276,8 @@ export default defineCommand({
         if (action === 'add-another') {
           continue;
         }
-        break;
+        p.outro('Done!');
+        return;
       }
 
       const another = await p.confirm({ message: 'Add another?' });
