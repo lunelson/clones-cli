@@ -1,6 +1,7 @@
 import { defineCommand, runMain } from 'citty';
 import { createRequire } from 'node:module';
 import { renderBanner, renderInfo } from './lib/banner.js';
+import { hasSubcommandArg } from './lib/cli-args.js';
 import { checkForUpdates } from './lib/update.js';
 
 const require = createRequire(import.meta.url);
@@ -35,7 +36,10 @@ const main = defineCommand({
     sync: () => import('./commands/sync.js').then((m) => m.default),
   },
   // Default: run interactive browser when no subcommand given
-  async run() {
+  async run({ rawArgs }) {
+    if (hasSubcommandArg(rawArgs)) {
+      return;
+    }
     const { default: browse } = await import('./commands/browse.js');
     await browse.run?.({ args: {} } as unknown as Parameters<typeof browse.run>[0]);
   },
