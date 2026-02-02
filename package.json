@@ -1,6 +1,6 @@
 {
   "name": "clones-cli",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A read-only Git repository manager for exploration and reference",
   "keywords": [
     "git",
