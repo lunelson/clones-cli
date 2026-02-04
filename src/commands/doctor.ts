@@ -34,7 +34,23 @@ async function doctorRegistry(): Promise<void> {
     return;
   }
 
-  const raw = parseRegistryContent(registryFile.content, registryFile.format, registryFile.path);
+  let raw: unknown;
+  try {
+    raw = parseRegistryContent(registryFile.content, registryFile.format, registryFile.path);
+  } catch {
+    p.log.error(`Registry file is corrupted: ${registryPath}`);
+    const shouldReset = await p.confirm({
+      message: 'Reset to empty registry? (existing entries will be lost)',
+      initialValue: false,
+    });
+    if (p.isCancel(shouldReset) || !shouldReset) {
+      throw new Error('Registry corruption not resolved');
+    }
+    await writeRegistry(createEmptyRegistry());
+    p.log.success(`Reset registry: ${registryPath}`);
+    return;
+  }
+
   const normalized = normalizeRegistry(raw);
   const canonical = stringifyRegistryToml(normalized.data);
   const needsWrite = registryFile.format === 'json' || canonical !== registryFile.content;
