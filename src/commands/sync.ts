@@ -204,19 +204,14 @@ export default defineCommand({
           signal: syncOptions.signal,
           onCancel: syncOptions.cancel,
         });
-        const log = p.taskLog({
-          title: '',
-          retainLog: true,
-          signal: syncOptions.signal,
-        });
         let completed = 0;
         let updateErrors = 0;
         let noopCount = 0;
 
         if (reposToUpdate.length === 0) {
-          log.success('No repos to update');
+          p.log.info('  No repos to update');
         } else {
-          progress.start('Updating repos');
+          progress.start();
 
           for await (const outcome of runWithConcurrency(
             reposToUpdate,
@@ -228,7 +223,6 @@ export default defineCommand({
             syncOptions.signal
           )) {
             completed += 1;
-            progress.advance(1, `${completed}/${reposToUpdate.length} updated`);
             const name = `${outcome.entry.owner}/${outcome.entry.repo}`;
 
             if (outcome.result.status === 'updated') {
@@ -245,7 +239,7 @@ export default defineCommand({
                 const parts: string[] = [actionLabel];
                 if (commits > 0) parts.push(`${commits} commits`);
                 if (wasDirty) parts.push('was dirty');
-                log.message(`  ✓ ${name} (${parts.join(', ')})`);
+                progress.message(`  ✓ ${name} (${parts.join(', ')})`);
               } else {
                 noopCount += 1;
               }
@@ -262,7 +256,7 @@ export default defineCommand({
                 });
               }
             } else if (outcome.result.status === 'skipped') {
-              log.message(`  ○ ${name} (${outcome.result.reason})`);
+              progress.message(`  ○ ${name} (${outcome.result.reason})`);
               summaries.push({
                 name,
                 action: 'skipped',
@@ -270,13 +264,15 @@ export default defineCommand({
               });
             } else {
               updateErrors += 1;
-              log.message(`  ✗ ${name} (${outcome.result.error})`);
+              progress.message(`  ✗ ${name} (${outcome.result.error})`);
               summaries.push({
                 name,
                 action: 'error',
                 detail: outcome.result.error,
               });
             }
+
+            progress.advance(1, `${completed}/${reposToUpdate.length} updated`);
           }
 
           const parts: string[] = [];
@@ -287,11 +283,9 @@ export default defineCommand({
           const summary = parts.length > 0 ? parts.join(', ') : 'Update complete';
 
           if (updateErrors > 0) {
-            progress.stop('Update completed with errors');
-            log.error(summary);
+            progress.stop(`Update completed with errors: ${summary}`);
           } else {
-            progress.stop('Update complete');
-            log.success(summary);
+            progress.stop(`Update complete: ${summary}`);
           }
         }
       }
