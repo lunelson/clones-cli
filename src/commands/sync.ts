@@ -197,24 +197,25 @@ export default defineCommand({
           p.log.info(`  Filtering to: ${args.filter}`);
         }
 
-        if (reposToUpdate.length === 0) {
-          p.log.info('  No repos to update');
-        } else {
-          const concurrency = Math.min(Math.max(syncOptions.concurrency, 1), reposToUpdate.length);
-          const progress = p.progress({
-            max: reposToUpdate.length,
-            style: 'heavy',
-            signal: syncOptions.signal,
-            onCancel: syncOptions.cancel,
-          });
-          const log = p.taskLog({
-            title: 'Updating repos',
-            retainLog: true,
-            signal: syncOptions.signal,
-          });
-          let completed = 0;
-          let updateErrors = 0;
+        const concurrency = Math.min(Math.max(syncOptions.concurrency, 1), reposToUpdate.length);
+        const progress = p.progress({
+          max: reposToUpdate.length,
+          style: 'heavy',
+          signal: syncOptions.signal,
+          onCancel: syncOptions.cancel,
+        });
+        const log = p.taskLog({
+          title: '',
+          retainLog: true,
+          signal: syncOptions.signal,
+        });
+        let completed = 0;
+        let updateErrors = 0;
+        let noopCount = 0;
 
+        if (reposToUpdate.length === 0) {
+          log.success('No repos to update');
+        } else {
           progress.start('Updating repos');
 
           for await (const outcome of runWithConcurrency(
@@ -231,18 +232,28 @@ export default defineCommand({
             const name = `${outcome.entry.owner}/${outcome.entry.repo}`;
 
             if (outcome.result.status === 'updated') {
-              const actionLabel = dryRun
-                ? 'would update'
-                : outcome.entry.updateStrategy === 'hard-reset'
-                  ? 'reset'
-                  : 'ff-only';
-              const detail = outcome.result.commits ? `, ${outcome.result.commits} commits` : '';
-              log.message(`  ✓ ${name} (${actionLabel}${detail})`);
+              const commits = outcome.result.commits ?? 0;
+              const wasDirty = outcome.result.wasDirty;
+              const hadChanges = commits > 0 || wasDirty;
+
+              if (hadChanges || dryRun) {
+                const actionLabel = dryRun
+                  ? 'would update'
+                  : outcome.entry.updateStrategy === 'hard-reset'
+                    ? 'reset'
+                    : 'ff-only';
+                const parts: string[] = [actionLabel];
+                if (commits > 0) parts.push(`${commits} commits`);
+                if (wasDirty) parts.push('was dirty');
+                log.message(`  ✓ ${name} (${parts.join(', ')})`);
+              } else {
+                noopCount += 1;
+              }
 
               summaries.push({
                 name,
                 action: 'updated',
-                detail: outcome.result.commits ? `${outcome.result.commits} commits` : undefined,
+                detail: commits ? `${commits} commits` : undefined,
               });
 
               if (!dryRun) {
@@ -268,12 +279,19 @@ export default defineCommand({
             }
           }
 
+          const parts: string[] = [];
+          const actualUpdates = completed - noopCount - updateErrors;
+          if (actualUpdates > 0) parts.push(`${actualUpdates} updated`);
+          if (noopCount > 0) parts.push(`${noopCount} already up-to-date`);
+          if (updateErrors > 0) parts.push(`${updateErrors} errors`);
+          const summary = parts.length > 0 ? parts.join(', ') : 'Update complete';
+
           if (updateErrors > 0) {
             progress.stop('Update completed with errors');
-            log.error('Update completed with errors');
+            log.error(summary);
           } else {
             progress.stop('Update complete');
-            log.success('Update complete');
+            log.success(summary);
           }
         }
       }
@@ -696,12 +714,14 @@ async function updateRepo(
     return { status: 'skipped', reason: 'no upstream tracking' };
   }
 
-  if (status.isDirty && !options.force) {
+  const wasDirty = status.isDirty;
+
+  if (wasDirty && !options.force) {
     return { status: 'skipped', reason: 'dirty working tree' };
   }
 
   if (options.dryRun) {
-    return { status: 'updated', commits: 0 };
+    return { status: 'updated', commits: 0, wasDirty };
   }
 
   try {
@@ -733,7 +753,7 @@ async function updateRepo(
       }
     }
 
-    return { status: 'updated', commits };
+    return { status: 'updated', commits, wasDirty };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return { status: 'error', error: message };

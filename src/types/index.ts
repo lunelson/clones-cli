@@ -78,6 +78,6 @@ export interface RepoStatus {
  * Result of an update operation for a single repo
  */
 export type UpdateResult =
-  | { status: 'updated'; commits: number }
+  | { status: 'updated'; commits: number; wasDirty: boolean }
   | { status: 'skipped'; reason: string }
   | { status: 'error'; error: string };
