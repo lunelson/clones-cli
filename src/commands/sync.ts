@@ -159,20 +159,6 @@ export default defineCommand({
         });
       }
 
-      if (adopted.length === 0) {
-        p.log.info('  No untracked repos found');
-      } else {
-        p.log.success(`  ${adopted.length} repo(s) ${dryRun ? 'would be' : ''} adopted`);
-      }
-
-      if (removed.length > 0) {
-        p.log.success(`  ${removed.length} repo(s) ${dryRun ? 'would be' : ''} removed`);
-      }
-
-      if (adoptSkipped.length > 0) {
-        p.log.info(`  ${adoptSkipped.length} repo(s) skipped`);
-      }
-
       // ═══════════════════════════════════════════════════════════════════
       // PHASE 2: CLONE - Clone repos in registry but missing from disk
       // ═══════════════════════════════════════════════════════════════════
@@ -194,17 +180,6 @@ export default defineCommand({
             action: 'error',
             detail: err.error,
           });
-        }
-
-        if (cloned.length === 0 && cloneErrors.length === 0) {
-          p.log.info('  No missing repos to clone');
-        } else {
-          if (cloned.length > 0) {
-            p.log.success(`  ${cloned.length} repo(s) ${dryRun ? 'would be' : ''} cloned`);
-          }
-          if (cloneErrors.length > 0) {
-            p.log.error(`  ${cloneErrors.length} clone error(s)`);
-          }
         }
       }
 
@@ -437,7 +412,7 @@ interface AdoptResult {
 
 async function adoptPhase(
   registry: Registry,
-  options: { dryRun: boolean; force: boolean; keep: boolean }
+  options: { dryRun: boolean; force: boolean; keep: boolean; signal?: AbortSignal }
 ): Promise<AdoptResult> {
   const adopted: { owner: string; repo: string }[] = [];
   const removed: { owner: string; repo: string }[] = [];
@@ -445,6 +420,9 @@ async function adoptPhase(
   let updatedRegistry = registry;
 
   const { discovered } = await scanClonesDir();
+
+  const log = p.taskLog({ title: 'Discovering repos', retainLog: true, signal: options.signal });
+  let hasOutput = false;
 
   for (const repo of discovered) {
     // Check if already in registry
@@ -483,43 +461,49 @@ async function adoptPhase(
         repo: repo.repo,
         reason: `remote mismatch (${parsed.owner}/${parsed.repo})`,
       });
-      p.log.warn(
+      log.message(
         `  ○ ${repo.owner}/${repo.repo} (remote mismatch: ${parsed.owner}/${parsed.repo})`
       );
+      hasOutput = true;
       continue;
     }
 
     if (registry.tombstones.includes(repoId)) {
       if (options.keep) {
         skipped.push({ owner: repo.owner, repo: repo.repo, reason: 'tombstoned (--keep)' });
-        p.log.info(`  ○ ${repo.owner}/${repo.repo} (tombstoned, keeping)`);
+        log.message(`  ○ ${repo.owner}/${repo.repo} (tombstoned, keeping)`);
+        hasOutput = true;
         continue;
       }
 
       const status = await getRepoStatus(repo.localPath);
       if (status.isDirty && !options.force) {
         skipped.push({ owner: repo.owner, repo: repo.repo, reason: 'dirty working tree' });
-        p.log.warn(`  ○ ${repo.owner}/${repo.repo} (dirty, use --force)`);
+        log.message(`  ○ ${repo.owner}/${repo.repo} (dirty, use --force)`);
+        hasOutput = true;
         continue;
       }
 
       if (options.dryRun) {
         removed.push({ owner: repo.owner, repo: repo.repo });
-        p.log.info(`  - ${repo.owner}/${repo.repo} (would remove)`);
+        log.message(`  - ${repo.owner}/${repo.repo} (would remove)`);
+        hasOutput = true;
         continue;
       }
 
       try {
         await rm(repo.localPath, { recursive: true, force: true });
         removed.push({ owner: repo.owner, repo: repo.repo });
-        p.log.info(`  - ${repo.owner}/${repo.repo} (removed)`);
+        log.message(`  - ${repo.owner}/${repo.repo} (removed)`);
+        hasOutput = true;
       } catch (error) {
         skipped.push({
           owner: repo.owner,
           repo: repo.repo,
           reason: error instanceof Error ? error.message : String(error),
         });
-        p.log.warn(`  ○ ${repo.owner}/${repo.repo} (remove failed)`);
+        log.message(`  ○ ${repo.owner}/${repo.repo} (remove failed)`);
+        hasOutput = true;
       }
 
       continue;
@@ -562,7 +546,18 @@ async function adoptPhase(
     }
 
     adopted.push({ owner: repo.owner, repo: repo.repo });
-    p.log.info(`  + ${repo.owner}/${repo.repo}`);
+    log.message(`  + ${repo.owner}/${repo.repo}${options.dryRun ? ' (would adopt)' : ''}`);
+    hasOutput = true;
+  }
+
+  if (hasOutput) {
+    const parts: string[] = [];
+    if (adopted.length > 0) parts.push(`${adopted.length} adopted`);
+    if (removed.length > 0) parts.push(`${removed.length} removed`);
+    if (skipped.length > 0) parts.push(`${skipped.length} skipped`);
+    log.success(parts.length > 0 ? parts.join(', ') : 'Discovery complete');
+  } else {
+    log.success('No untracked repos found');
   }
 
   return { adopted, removed, skipped, registry: updatedRegistry };
@@ -599,15 +594,19 @@ async function clonePhase(
     targets.push({ entry, localPath, name });
   }
 
-  if (options.dryRun) {
-    for (const target of targets) {
-      p.log.info(`  + ${target.name} (would clone)`);
-      cloned.push({ owner: target.entry.owner, repo: target.entry.repo });
-    }
+  const log = p.taskLog({ title: 'Cloning repos', retainLog: true, signal: options.signal });
+
+  if (targets.length === 0) {
+    log.success('No missing repos to clone');
     return { cloned, errors };
   }
 
-  if (targets.length === 0) {
+  if (options.dryRun) {
+    for (const target of targets) {
+      log.message(`  + ${target.name} (would clone)`);
+      cloned.push({ owner: target.entry.owner, repo: target.entry.repo });
+    }
+    log.success(`${cloned.length} would be cloned`);
     return { cloned, errors };
   }
 
@@ -618,7 +617,6 @@ async function clonePhase(
     signal: options.signal,
     onCancel: options.cancel,
   });
-  const log = p.taskLog({ title: 'Cloning repos', retainLog: true, signal: options.signal });
   let completed = 0;
 
   progress.start('Cloning repos');
@@ -659,8 +657,13 @@ async function clonePhase(
     }
   }
 
-  progress.stop('Cloning complete');
-  log.success('Cloning complete');
+  if (errors.length > 0) {
+    progress.stop('Cloning completed with errors');
+    log.error(`${cloned.length} cloned, ${errors.length} errors`);
+  } else {
+    progress.stop('Cloning complete');
+    log.success(`${cloned.length} cloned`);
+  }
 
   return { cloned, errors };
 }
